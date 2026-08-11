@@ -1,0 +1,30 @@
+services:
+  iris:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: iris:latest
+    container_name: iris
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # Where generated projects + site source are persisted (mounted volume below).
+      IRIS_DATA_DIR: /data
+      # GPT is supplied at runtime via the environment. Leave OPENAI_API_KEY empty to
+      # run fully on the deterministic prebuilt-component engine (no AI calls).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+    # Optional: load the same vars from a local .env file (see .env.example).
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - iris-data:/data
+
+volumes:
+  iris-data:
