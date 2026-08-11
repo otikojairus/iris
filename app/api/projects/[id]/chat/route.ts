@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { readProject, saveProject } from "@/lib/server/store";
 import { interpretEdit, type ContentEdit } from "@/lib/ai/editor";
 import { editPageContent } from "@/lib/ai/content";
+import { generateHomeContent } from "@/lib/ai/home-content";
 import { isAiEnabled } from "@/lib/ai/client";
 import { deriveStructure, cityFromTargetArea, pageListLabel, serviceShortLabel } from "@/lib/generate/content";
 import type { Branding } from "@/lib/generate/generator";
-import type { ChatMessage, PageContent, Project, SeoPage } from "@/lib/types";
+import { requireAuth } from "@/lib/server/require-auth";
+import type { ChatMessage, HomeContent, PageContent, Project, SeoPage } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +73,8 @@ function matchPages(project: Project, query: string): SeoPage[] {
 
 type ContentEditOutcome = {
   contentBySlug: Record<string, PageContent>;
+  /** Present when the homepage copy was regenerated. */
+  homeContent?: HomeContent;
   changed: string[];
   targetedCount: number;
   cappedFrom?: number;
@@ -91,15 +95,19 @@ async function applyContentEdit(project: Project, edit: ContentEdit): Promise<Co
   let targets: SeoPage[];
   let cappedFrom: number | undefined;
   if (edit.scope === "page" && edit.query) {
-    // "home"/"homepage" doesn't have a contentBySlug entry (its hero copy is templated);
-    // steer the user rather than silently doing nothing on a non-existent page.
+    // The homepage isn't a contentBySlug entry — it has its own AI-written homeContent.
+    // Regenerate it so "rewrite the homepage" actually rewrites the hero + sections.
     if (/^home(page)?$|^(front|landing) ?page$/.test(edit.query.toLowerCase().trim())) {
+      const home = await generateHomeContent({ pages: project.pages, branding: b });
       return {
         contentBySlug: existing,
-        changed: [],
-        targetedCount: 0,
+        homeContent: home,
+        changed: ["/"],
+        targetedCount: 1,
         reply:
-          "The homepage hero copy is generated from your tagline and theme — try \"set the tagline to …\" to change its headline. I can rewrite any interior page's words though (e.g. \"rewrite the Toronto page\" or \"shorten the intro on all pages\").",
+          home.source === "ai"
+            ? "Done — I rewrote the homepage copy (hero, section intros, and FAQs) to feel more natural and customer-focused."
+            : "I refreshed the homepage copy. Add an OpenAI API key to have it rewritten by GPT for a more tailored result.",
       };
     }
     targets = matchPages(project, edit.query);
@@ -166,6 +174,8 @@ function describeSpec(edit: ContentEdit): string {
  * and returns the updated project plus the assistant message.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const { id } = await params;
   const project = await readProject(id);
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -201,8 +211,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (patch.contentEdit) {
     const outcome = await applyContentEdit(merged, patch.contentEdit);
     if (outcome.contentBySlug) merged.contentBySlug = outcome.contentBySlug;
-    if (outcome.reply && outcome.changed.length === 0) {
-      // Nothing was regenerated (e.g. homepage or no match) — surface the steer.
+    if (outcome.homeContent) merged.homeContent = outcome.homeContent;
+    if (outcome.reply && (outcome.changed.length === 0 || outcome.homeContent)) {
+      // Nothing regenerated (no match) OR a homepage rewrite — surface the tailored reply.
       contentReplyOverride = outcome.reply;
     } else if (outcome.changed.length) {
       const what = describeSpec(patch.contentEdit);

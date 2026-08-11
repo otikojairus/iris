@@ -2,7 +2,7 @@
 // code uses the theme's class prefix and single-quoted strings / concatenation so it
 // embeds safely in these template literals.
 
-import type { SeoPage } from "@/lib/types";
+import type { HomeContent, SeoPage } from "@/lib/types";
 import { Theme, fontImports, fontJsName } from "./themes";
 import { SiteStructure, serviceShortLabel, cityFromTargetArea, linkLabel, pageListLabel } from "./content";
 import { type Composition, type Ctx, FAQS, renderHeroTsx, renderSectionTsx } from "./blocks";
@@ -338,12 +338,12 @@ export function SiteFooter() {
 `;
 }
 
-export function renderHomePage(theme: Theme, b: Branding, structure: SiteStructure, composition: Composition): string {
+export function renderHomePage(theme: Theme, b: Branding, structure: SiteStructure, composition: Composition, homeContent?: HomeContent): string {
   const p = theme.prefix;
   const ctx: Ctx = { theme, b, structure };
-  const hero = renderHeroTsx(ctx, composition.hero);
+  const hero = renderHeroTsx(ctx, composition.hero, homeContent);
   const sections = composition.sections.map((id) => renderSectionTsx(ctx, id, composition.band[id])).join("\n\n    ");
-  const homeFaqs = FAQS;
+  const homeFaqs = homeContent?.faqs?.length ? homeContent.faqs : FAQS;
 
   // Only import the data helpers the chosen sections actually use (ESLint runs on `next build`).
   const hasServices = composition.sections.includes("services");

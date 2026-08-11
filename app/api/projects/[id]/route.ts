@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteProject, patchProject, readProject } from "@/lib/server/store";
+import { requireAuth } from "@/lib/server/require-auth";
 import type { Project } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/projects/:id — read one project. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const { id } = await params;
   const project = await readProject(id);
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -15,6 +18,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 /** PATCH /api/projects/:id — update branding/theme/layout and re-persist the site. */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const { id } = await params;
   let patch: Partial<Project>;
   try {
@@ -31,6 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 /** DELETE /api/projects/:id — remove a project and its artifacts. */
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const { id } = await params;
   const ok = await deleteProject(id);
   if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });

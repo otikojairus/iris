@@ -9,6 +9,7 @@ import type { SiteStructure } from "./content";
 import { anchorText, linkLabel, pageListLabel, pillarTagline, serviceShortLabel } from "./content";
 import { IMAGE_POOL } from "./templates-app";
 import type { Branding } from "./generator";
+import type { HomeContent } from "@/lib/types";
 
 export type Ctx = { theme: Theme; b: Branding; structure: SiteStructure };
 
@@ -53,7 +54,9 @@ const shuffle = <T,>(rng: () => number, list: T[]): T[] => {
   return out;
 };
 
-const OPTIONAL: SectionId[] = ["stats", "alert", "chips", "cta"];
+// Deliberately excludes "stats" — homepages should read as natural, user-centered copy
+// rather than pSEO-style statistics (page counts, "cities served", etc.).
+const OPTIONAL: SectionId[] = ["alert", "chips", "cta"];
 
 /** Deterministic composition for a project (stable across reloads + export). */
 export function compose(seedStr: string): Composition {
@@ -107,23 +110,23 @@ export function renderHeroPreview(ctx: Ctx, hero: HeroVariant): string {
   const { theme, b, structure } = ctx;
   const p = theme.prefix;
   const img = heroImage(ctx, "hero");
-  const badge = `<div class="${p}-hero-badge"><span class="${p}-blink"></span>24/7</div>`;
+  const badge = `<div class="${p}-hero-badge"><span class="${p}-blink"></span>Open now</div>`;
   const ticket = `<div class="${p}-hero-ticket">
-    <div class="${p}-hero-ticket-head"><span>WORK ORDER #${structure.pageCount}</span><b>SCHEDULED</b></div>
-    <div class="${p}-hero-ticket-row"><span>Site</span><em>Commercial · Residential</em></div>
-    <div class="${p}-hero-ticket-row"><span>Scope</span><em>Sized on call</em></div>
-    <div class="${p}-hero-ticket-row"><span>Ready</span><div class="${p}-meter"><i style="width:100%"></i></div><b>100%</b></div>
-    <p class="${p}-hero-ticket-note">Booked in minutes · documented for your records.</p>
+    <div class="${p}-hero-ticket-head"><span>How it works</span><b>Simple</b></div>
+    <div class="${p}-hero-ticket-row"><span>1</span><em>You call and tell us what's going on</em></div>
+    <div class="${p}-hero-ticket-row"><span>2</span><em>We give you a fair price up front</em></div>
+    <div class="${p}-hero-ticket-row"><span>3</span><em>A crew turns up when we said</em></div>
+    <p class="${p}-hero-ticket-note">No call centres · no surprises on the bill.</p>
   </div>`;
   const copy = `<div class="${p}-hero-copy">
-    <p class="${p}-kicker"><span class="${p}-blink"></span>24/7 Service · Coast to Coast</p>
-    <h1>${esc(b.tagline || "Dependable Service Across Canada")}</h1>
-    <p class="${p}-hero-lede">${esc(b.brandName)} dispatches real crews for dependable, well-documented service across Canada. Tell us what you need and where the crew can access the site, and we show up sized for the job.</p>
+    <p class="${p}-kicker"><span class="${p}-blink"></span>Local help, when you need it</p>
+    <h1>${esc(b.tagline || "Help You Can Actually Rely On")}</h1>
+    <p class="${p}-hero-lede">Talk to a real person, get a fair price up front, and deal with a crew that turns up when they said they would. Tell us what's going on and we'll take it from there.</p>
     <div class="${p}-actions">
       <a class="${p}-call ${p}-call-large" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>
       <a class="${p}-secondary" href="#">Browse Services</a>
     </div>
-    <ul class="${p}-hero-status"><li>Dispatch: LIVE</li><li>Crews: On call</li><li>Coverage: National</li></ul>
+    <ul class="${p}-hero-status"><li>A real person answers</li><li>Fair price up front</li><li>We turn up on time</li></ul>
   </div>`;
   if (hero === "center") {
     return `<section class="${p}-hero" data-hero="center">
@@ -166,8 +169,8 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
     case "intro":
       return `<section class="${p}-section">
         <div class="${p}-wrap ${p}-split">
-          <div>${eyebrow("// THE PROBLEM")}<h2>Dependable Service, Without the Runaround</h2></div>
-          <p>The work itself is rarely the whole problem. The bigger risk is a contractor who does not show up, a quote that changes, or a job that is never documented. ${esc(b.brandName)} handles the booking, the work, and the records as one job.</p>
+          <div>${eyebrow("Why us")}<h2>Help Without the Runaround</h2></div>
+          <p>The job itself is rarely the hard part. The frustrating bit is someone who doesn't show up, a quote that quietly grows, or being left guessing. ${esc(b.brandName)} keeps it simple: a straight answer on the phone, a fair price agreed up front, and work that's actually done.</p>
         </div>
       </section>`;
     case "services": {
@@ -241,27 +244,34 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
 
 /* ================= TSX RENDERERS (exported Next app) ================= */
 
-export function renderHeroTsx(ctx: Ctx, hero: HeroVariant): string {
+export function renderHeroTsx(ctx: Ctx, hero: HeroVariant, home?: HomeContent): string {
   const { theme, b, structure } = ctx;
   const p = theme.prefix;
   const img = heroImage(ctx, "hero");
-  const badge = `<div className="${p}-hero-badge" aria-hidden="true"><span className="${p}-blink" />24/7</div>`;
+  const jx = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[{}]/g, (m) => (m === "{" ? "&#123;" : "&#125;"));
+  const heroKicker = home ? jx(home.heroKicker) : "Local help, when you need it";
+  const heroH1 = home ? jx(home.heroH1) : b.tagline || "Help You Can Actually Rely On";
+  const heroLede = home
+    ? jx(home.heroLede)
+    : "Talk to a real person, get a fair price up front, and deal with a crew that turns up when they said they would. Tell us what's going on and we'll take it from there.";
+  const heroBullets = (home?.heroBullets?.length ? home.heroBullets : ["A real person answers", "Fair price up front", "We turn up on time"]).slice(0, 3);
+  const badge = `<div className="${p}-hero-badge" aria-hidden="true"><span className="${p}-blink" />Open now</div>`;
   const ticket = `<div className="${p}-hero-ticket" aria-hidden="true">
-      <div className="${p}-hero-ticket-head"><span>WORK ORDER #${structure.pageCount}</span><b>SCHEDULED</b></div>
-      <div className="${p}-hero-ticket-row"><span>Site</span><em>Commercial · Residential</em></div>
-      <div className="${p}-hero-ticket-row"><span>Scope</span><em>Sized on call</em></div>
-      <div className="${p}-hero-ticket-row"><span>Ready</span><div className="${p}-meter"><i style={{ width: "100%" }} /></div><b>100%</b></div>
-      <p className="${p}-hero-ticket-note">Booked in minutes · documented for your records.</p>
+      <div className="${p}-hero-ticket-head"><span>How it works</span><b>Simple</b></div>
+      <div className="${p}-hero-ticket-row"><span>1</span><em>You call and tell us what's going on</em></div>
+      <div className="${p}-hero-ticket-row"><span>2</span><em>We give you a fair price up front</em></div>
+      <div className="${p}-hero-ticket-row"><span>3</span><em>A crew turns up when we said</em></div>
+      <p className="${p}-hero-ticket-note">No call centres · no surprises on the bill.</p>
     </div>`;
   const copy = `<div className="${p}-hero-copy">
-      <p className="${p}-kicker"><span className="${p}-blink" aria-hidden="true" />24/7 Service · Coast to Coast</p>
-      <h1>${b.tagline || "Dependable Service Across Canada"}</h1>
-      <p className="${p}-hero-lede">${b.brandName} dispatches real crews for dependable, well-documented service across Canada. Tell us what you need and where the crew can access the site, and we show up sized for the job.</p>
+      <p className="${p}-kicker"><span className="${p}-blink" aria-hidden="true" />${heroKicker}</p>
+      <h1>${heroH1}</h1>
+      <p className="${p}-hero-lede">${heroLede}</p>
       <div className="${p}-actions">
         <a className="${p}-call ${p}-call-large" href={\`tel:\${PHONE_E164}\`}>Call {PHONE_DISPLAY}</a>
         <Link className="${p}-secondary" href="/services">Browse Services</Link>
       </div>
-      <ul className="${p}-hero-status"><li>Dispatch: LIVE</li><li>Crews: On call</li><li>Coverage: National</li></ul>
+      <ul className="${p}-hero-status">${heroBullets.map((x) => `<li>${jx(x)}</li>`).join("")}</ul>
     </div>`;
   if (hero === "center") {
     return `<section className="${p}-hero" data-hero="center">
@@ -308,8 +318,8 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
     case "intro":
       return `<section className="${p}-section">
         <div className="${p}-wrap ${p}-split">
-          <div>${eyebrow("// THE PROBLEM")}<h2>Dependable Service, Without the Runaround</h2></div>
-          <p>The work itself is rarely the whole problem. The bigger risk is a contractor who does not show up, a quote that changes, or a job that is never documented. ${b.brandName} handles the booking, the work, and the records as one job.</p>
+          <div>${eyebrow("Why us")}<h2>Help Without the Runaround</h2></div>
+          <p>The job itself is rarely the hard part. The frustrating bit is someone who doesn't show up, a quote that quietly grows, or being left guessing. ${b.brandName} keeps it simple: a straight answer on the phone, a fair price agreed up front, and work that's actually done.</p>
         </div>
       </section>`;
     case "services": {

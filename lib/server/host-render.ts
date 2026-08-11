@@ -35,6 +35,7 @@ import {
   type VCtx,
 } from "@/lib/generate/variants";
 import { templateContent } from "@/lib/ai/content";
+import { templateHomeContent } from "@/lib/ai/home-content";
 import type { Branding } from "@/lib/generate/generator";
 
 function brandingOf(project: Project): Branding {
@@ -242,85 +243,99 @@ function varyCopy(seed: string, list: string[]): string {
   return list[(h >>> 0) % list.length];
 }
 
-const HOME_FAQS: FaqItem[] = [
-  { q: "How soon can someone come out?", a: "Usually sooner than you'd think. Give us a call and we'll tell you honestly when we can be there — most jobs get booked within the week, and if it's urgent we keep people on standby for exactly that." },
-  { q: "Do you work with both homes and businesses?", a: "Both, all the time. Just tell us what you've got and what's going on; we'll match the right crew and give you a fair price whether it's a one-off or something regular." },
-  { q: "How do you handle quotes?", a: "You get a clear price before we start, not a nasty surprise afterwards. If something changes once we're on site, we stop and talk to you first — no quiet add-ons." },
-];
-
 export function renderHostHome(project: Project): string {
   const shell = shellOf(project);
   const ctx = ctxOf(shell);
-  const { b, structure } = shell;
+  const { b } = shell;
   const plan = planVariants(`${project.id}:${project.themeId}:${project.layoutSeed || 0}`, project.variants);
+
+  // Homepage copy: persisted AI/template content, or a template fallback computed now.
+  const home = project.homeContent || templateHomeContent(shell.structure, b);
 
   const logo = logoDataUri(shell.theme, b.brandName);
   const header = renderHeader(ctx, plan.header, { logo, nav: navLinks(shell) });
   const footer = renderFooter(ctx, plan.footer, footerLinks(shell));
 
-  const firstPillar = structure.pillars[0];
   const hero: HeroContent = {
-    kicker: "Local help, when you need it",
-    h1: b.tagline || `${firstPillar ? serviceShortLabel(firstPillar) + " " : ""}Done Properly`,
-    lede: `Talk to a real person, get a fair price up front, and deal with a crew that turns up when they said they would. Tell us what's going on and we'll take it from there — whether it's a one-off or something you'll need again.`,
+    kicker: home.heroKicker,
+    h1: home.heroH1,
+    lede: home.heroLede,
     primaryHref: `tel:${b.phoneE164}`,
     primaryLabel: `Call ${b.phoneDisplay}`,
     secondaryHref: ctx.servicesHref,
     secondaryLabel: "Browse Services",
-    bullets: ["A person answers the phone", "Crews out today", "Right across your area"],
+    bullets: home.heroBullets,
     image: imageFor(`hero:${project.id}`),
-    imageAlt: `${b.brandName} crew at work`,
+    imageAlt: `${b.brandName} at work`,
     isH1: true,
   };
 
-  const s = `${project.id}:${project.layoutSeed || 0}`;
+  // Stable style seed per site + per section role, so each section picks a different
+  // (but deterministic) design from its expanded family.
+  const styleSeedFor = (role: string) => `${project.id}:${project.layoutSeed || 0}:${role}`;
+
   const sectionsHtml = plan.homeSections
     .map(({ id, band }) => {
-      if (id === "faq-grid" || id === "faq-accordion") {
-        return renderSection(ctx, id, {
-          eyebrow: "// COMMON QUESTIONS",
-          heading: varyCopy(`${s}:faq`, ["A few common questions", "Questions we hear a lot", "Good to know", "Before you call"]),
-          faqs: HOME_FAQS,
+      if (id === "faq-grid" || id === "faq-accordion" || id === "faq") {
+        return renderSection(ctx, "faq", {
+          eyebrow: "Common questions",
+          heading: varyCopy(`${styleSeedFor("faq")}`, ["A few common questions", "Questions we hear a lot", "Good to know", "Before you call"]),
+          faqs: home.faqs,
           band,
+          styleSeed: styleSeedFor("faq"),
         });
       }
-      if (id === "services-grid" || id === "services-rows") {
-        return renderSection(ctx, id, {
-          eyebrow: "// WHAT WE DO",
-          heading: varyCopy(`${s}:svc`, ["What we can help with", "The work we take on", "How we can help", "What we do"]),
+      if (id === "services-grid" || id === "services-rows" || id === "services") {
+        return renderSection(ctx, "services", {
+          eyebrow: home.sections.services.eyebrow,
+          heading: home.sections.services.heading,
+          blurb: home.sections.services.blurb,
           band,
+          styleSeed: styleSeedFor("services"),
         });
       }
-      if (id === "coverage-tiles") {
-        return renderSection(ctx, id, {
-          eyebrow: "// WHERE WE WORK",
-          heading: varyCopy(`${s}:cov`, ["Where we work", "Areas we cover", "Find your area", "Near you"]),
+      if (id === "coverage-tiles" || id === "coverage") {
+        return renderSection(ctx, "coverage", {
+          eyebrow: home.sections.coverage.eyebrow,
+          heading: home.sections.coverage.heading,
+          blurb: home.sections.coverage.blurb,
           band,
+          styleSeed: styleSeedFor("coverage"),
         });
       }
       if (id === "stat-band")
-        return renderSection(ctx, id, { eyebrow: "// AT A GLANCE", heading: varyCopy(`${s}:stat`, ["A quick snapshot", "By the numbers", "At a glance"]), band });
-      if (id === "feature-list")
-        return renderSection(ctx, id, {
-          eyebrow: "// WHY US",
-          heading: varyCopy(`${s}:feat`, ["Why people keep calling us", "What you get with us", "Why folks stick with us", "What makes us worth a call"]),
+        return renderSection(ctx, id, { eyebrow: "At a glance", heading: varyCopy(`${styleSeedFor("stat")}`, ["A quick snapshot", "The essentials", "At a glance"]), band });
+      if (id === "feature-list" || id === "feature")
+        return renderSection(ctx, "feature", {
+          eyebrow: home.sections.features.eyebrow,
+          heading: home.sections.features.heading,
+          blurb: home.sections.features.blurb,
+          features: home.features,
           band,
+          styleSeed: styleSeedFor("feature"),
         });
       if (id === "comparison")
         return renderSection(ctx, id, {
-          eyebrow: "// HOW WE'RE DIFFERENT",
-          heading: varyCopy(`${s}:cmp`, ["What working with us is like", "The difference, in plain terms", "What you can actually expect"]),
+          eyebrow: home.sections.comparison.eyebrow,
+          heading: home.sections.comparison.heading,
           band,
         });
       if (id === "testimonial")
         return renderSection(ctx, id, {
-          eyebrow: "// IN THEIR WORDS",
-          heading: varyCopy(`${s}:tst`, ["What people tell us", "In their words", "What our customers say"]),
+          eyebrow: home.sections.testimonial.eyebrow,
+          heading: home.sections.testimonial.heading,
+          testimonials: home.testimonials,
           band,
+          styleSeed: styleSeedFor("testimonial"),
         });
       if (id === "logos-strip") return renderSection(ctx, id, {});
-      if (id === "cta-band")
-        return renderSection(ctx, id, { heading: varyCopy(`${s}:cta`, ["Ready to get started?", "Want to get booked in?", "Shall we get you sorted?"]), band });
+      if (id === "cta-band" || id === "cta")
+        return renderSection(ctx, "cta", {
+          heading: home.sections.cta.heading,
+          blurb: home.sections.cta.body,
+          band,
+          styleSeed: styleSeedFor("cta"),
+        });
       return renderSection(ctx, id, { band });
     })
     .join("\n");
@@ -329,7 +344,7 @@ export function renderHostHome(project: Project): string {
 
   return document(shell, {
     title: `${b.brandName} — ${b.tagline}`.slice(0, 65),
-    description: `${b.tagline} — friendly, local help from ${b.brandName}. Talk to a real person, get a fair price up front, and a crew that turns up. Call ${b.phoneDisplay}.`.slice(0, 160),
+    description: `${home.heroLede}`.slice(0, 160) || `Friendly, local help from ${b.brandName}. Call ${b.phoneDisplay}.`.slice(0, 160),
     canonicalSlug: "/",
     header,
     body: heroHtml + sectionsHtml,
@@ -343,7 +358,7 @@ export function renderHostHome(project: Project): string {
         telephone: b.phoneE164,
         description: b.tagline,
       },
-      faqSchema(HOME_FAQS),
+      faqSchema(home.faqs),
     ],
   });
 }
@@ -512,6 +527,7 @@ export function renderHostPage(project: Project, page: SeoPage): string {
     heading: varyCopy(`${page.pageSlug}:faq`, ["A few things people ask", "Questions we hear a lot", "Good to know", "Before you call"]),
     faqs: content.faqs,
     band: "soft",
+    styleSeed: `${project.id}:${page.pageSlug}:faq`,
   });
 
   // Internal links (keyword-rich, zero orphans).
@@ -527,8 +543,9 @@ export function renderHostPage(project: Project, page: SeoPage): string {
     links: relatedLinksFor(shell, page),
   });
 
-  const ctaHtml = renderSection(ctx, "cta-band", {
+  const ctaHtml = renderSection(ctx, "cta", {
     heading: varyCopy(`${page.pageSlug}:cta`, ["Ready to get started?", "Want to get booked in?", "Shall we sort this out?"]),
+    styleSeed: `${project.id}:${page.pageSlug}:cta`,
   });
 
   const body = heroHtml + crumbs + introSection + bodyHtml + factsHtml + faqHtml + linksHtml + ctaHtml;

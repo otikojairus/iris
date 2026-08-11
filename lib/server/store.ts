@@ -10,10 +10,8 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { Project } from "@/lib/types";
 import { generateSite } from "@/lib/generate/generator";
+import { DATA_DIR } from "./data-dir";
 
-// In the container IRIS_DATA_DIR=/data (a mounted volume). For local dev where /data
-// isn't writable, fall back to <cwd>/data.
-const DATA_DIR = process.env.IRIS_DATA_DIR || path.join(process.cwd(), "data");
 const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 
 /** Absolute path to a project's directory on the data volume. */

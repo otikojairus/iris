@@ -514,17 +514,17 @@ p { margin: 0 0 1rem; color: var(--${p}-ink-soft); }
   background: ${theme.heroDark ? "color-mix(in srgb, var(--" + p + "-dark) 94%, transparent)" : "color-mix(in srgb, var(--" + p + "-surface) 92%, transparent)"};
   backdrop-filter: blur(10px); border-bottom: 1px solid var(--${p}-line);
 }
-.${p}-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 70px; }
-.${p}-brand { display: inline-flex; align-items: center; gap: 0.7rem; }
-.${p}-brand-name { font-family: ${display}; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; color: ${theme.heroDark ? "var(--" + p + "-dark-text)" : "var(--" + p + "-ink)"}; }
+.${p}-nav { display: flex; align-items: center; gap: 1rem; min-height: 70px; }
+.${p}-brand { display: inline-flex; align-items: center; gap: 0.7rem; flex: 0 0 auto; }
+.${p}-brand-name { font-family: ${display}; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; color: ${theme.heroDark ? "var(--" + p + "-dark-text)" : "var(--" + p + "-ink)"}; white-space: nowrap; }
 .${p}-brand-name em { font-style: normal; color: var(--${p}-accent); }
-.${p}-links { display: flex; align-items: center; gap: 1.4rem; margin-left: auto; }
+.${p}-links { display: flex; align-items: center; gap: 1.4rem; margin-left: auto; flex: 0 1 auto; min-width: 0; }
 .${p}-links a { font-size: 0.94rem; font-weight: 600; color: ${theme.heroDark ? "var(--" + p + "-dark-muted)" : "var(--" + p + "-ink-soft)"}; transition: color 0.16s ease; }
 .${p}-links a:hover { color: var(--${p}-accent); }
 .${p}-call {
   display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.68rem 1.15rem;
   border-radius: ${r.btn}px; background: var(--${p}-accent); color: ${P.dark}; font-weight: 700;
-  font-size: 0.95rem; line-height: 1; transition: background 0.16s ease, transform 0.16s ease;
+  font-size: 0.95rem; line-height: 1; white-space: nowrap; transition: background 0.16s ease, transform 0.16s ease;
 }
 .${p}-call:hover { background: var(--${p}-accent-deep); transform: translateY(-1px); }
 .${p}-call-large { padding: 0.9rem 1.5rem; font-size: 1.05rem; }
@@ -534,8 +534,8 @@ p { margin: 0 0 1rem; color: var(--${p}-ink-soft); }
   font-size: 1rem; transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 .${p}-secondary:hover { border-color: var(--${p}-primary); background: var(--${p}-primary); color: #fff; }
-.${p}-call-desktop { margin-left: 0.25rem; }
-.${p}-menu { display: none; width: 44px; height: 44px; border: 1px solid var(--${p}-line); border-radius: ${r.btn}px; background: var(--${p}-surface); cursor: pointer; }
+.${p}-call-desktop { margin-left: 1.4rem; flex: 0 0 auto; }
+.${p}-menu { display: none; flex: 0 0 auto; margin-left: 0.75rem; width: 44px; height: 44px; border: 1px solid var(--${p}-line); border-radius: ${r.btn}px; background: var(--${p}-surface); cursor: pointer; }
 .${p}-menu span, .${p}-menu span::before, .${p}-menu span::after { content: ""; display: block; width: 20px; height: 2px; margin: 0 auto; border-radius: 2px; background: var(--${p}-ink); }
 .${p}-menu span { position: relative; }
 .${p}-menu span::before { position: absolute; top: -6px; }

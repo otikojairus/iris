@@ -110,6 +110,38 @@ export type PageContent = {
   source: "ai" | "template";
 };
 
+/**
+ * AI-generated (or template-fallback) copy for the HOMEPAGE. The homepage is not one of
+ * the SeoPage rows, so its natural, user-centered copy is stored separately. Layout still
+ * comes from the seeded variant library; only the words live here.
+ */
+export type HomeContent = {
+  /** Short kicker/eyebrow above the hero headline. */
+  heroKicker: string;
+  /** The single homepage H1 — a natural value proposition, not a keyword. */
+  heroH1: string;
+  /** One inviting hero paragraph (40–70 words). */
+  heroLede: string;
+  /** 3 short hero proof bullets (e.g. "A real person answers"). */
+  heroBullets: string[];
+  /** Warm, human section headings keyed by section role. */
+  sections: {
+    services: { eyebrow: string; heading: string; blurb: string };
+    features: { eyebrow: string; heading: string; blurb: string };
+    coverage: { eyebrow: string; heading: string; blurb: string };
+    testimonial: { eyebrow: string; heading: string };
+    comparison: { eyebrow: string; heading: string };
+    cta: { heading: string; body: string };
+  };
+  /** Concrete, human "why us" feature points (title + description). */
+  features: Array<{ title: string; description: string }>;
+  /** 3+ short, realistic customer quotes (quote + who). */
+  testimonials: Array<{ quote: string; who: string }>;
+  /** 3+ homepage FAQs written like a person. */
+  faqs: FaqItem[];
+  source: "ai" | "template";
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -139,6 +171,8 @@ export type Project = {
   pages: SeoPage[];
   /** Per-page generated content, keyed by page slug. Populated at generation time. */
   contentBySlug?: Record<string, PageContent>;
+  /** Homepage copy (AI or template). Populated at generation time. */
+  homeContent?: HomeContent;
   messages: ChatMessage[];
   files: ProjectFile[];
   previewUrl?: string;

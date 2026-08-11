@@ -19,7 +19,7 @@ import type { SiteStructure } from "./content";
 import { serviceShortLabel, pageListLabel, linkLabel } from "./content";
 import { IMAGE_POOL } from "./templates-app";
 import type { Branding } from "./generator";
-import type { CityFact, ContentSection, FaqItem } from "@/lib/types";
+import type { CityFact, ContentSection, FaqItem, SeoPage } from "@/lib/types";
 
 export const HERO_VARIANTS = Array.from({ length: 15 }, (_, i) => `hero-${i + 1}`);
 export const SECTION_VARIANTS = [
@@ -93,8 +93,10 @@ const shuffleWith = <T,>(rng: () => number, list: T[]): T[] => {
 
 /** Heroes that read well as an interior-page header (image band / compact styles). */
 const INTERIOR_HEROES = ["hero-4", "hero-13", "hero-12", "hero-6", "hero-11"];
-/** Optional homepage section archetypes the composer shuffles through. */
-const OPTIONAL_HOME_SECTIONS = ["stat-band", "feature-list", "comparison", "testimonial", "logos-strip", "process-steps"];
+/** Optional homepage section archetypes the composer shuffles through.
+ * Note: deliberately no "stat-band" — homepages should read as natural, user-centered
+ * copy rather than pSEO-style statistics (page counts, "cities served", etc.). */
+const OPTIONAL_HOME_SECTIONS = ["feature", "comparison", "testimonial", "logos-strip"];
 const FAQ_VARIANTS = ["faq-grid", "faq-accordion"];
 
 export type VariantPlan = {
@@ -361,6 +363,8 @@ export function renderHero(ctx: VCtx, id: string, c: HeroContent): string {
 export type SectionPayload = {
   eyebrow?: string;
   heading?: string;
+  /** Optional supporting blurb rendered under the heading. */
+  blurb?: string;
   /** For prose sections. */
   section?: ContentSection;
   /** For FAQ sections. */
@@ -369,8 +373,38 @@ export type SectionPayload = {
   facts?: CityFact[];
   /** For related-links / coverage. */
   links?: Array<{ href: string; label: string; sub?: string }>;
+  /** For feature sections — natural "why us" points. */
+  features?: Array<{ title: string; description: string }>;
+  /** For testimonial sections — realistic customer quotes. */
+  testimonials?: Array<{ quote: string; who: string }>;
   band?: "soft" | "dark";
+  /**
+   * A stable seed used to deterministically pick one of the many visual styles for the
+   * section's family (services/faq/cta/testimonial/coverage/feature). Vary it per site
+   * (and per section role) to get different-looking sites that stay stable per seed.
+   */
+  styleSeed?: string;
 };
+
+/**
+ * Per-family style counts. Each base section id (e.g. "services-grid") dispatches to one
+ * of N numbered layouts chosen deterministically from styleSeed, giving 10+ distinct
+ * designs per section type without the caller needing to know the specific layout.
+ */
+export const SECTION_STYLE_COUNT: Record<string, number> = {
+  services: 12,
+  feature: 10,
+  faq: 10,
+  cta: 12,
+  testimonial: 11,
+  coverage: 11,
+};
+
+/** Deterministically choose a style index in [0, count) from a seed string. */
+function styleIndex(seed: string | undefined, count: number): number {
+  if (!seed) return 0;
+  return hashStr(seed) % count;
+}
 
 /** Strip trailing qualifiers ("Canada", "- Daily", "- Full", dashes) so a label reads well mid-sentence. */
 const cleanLabel = (s: string): string => {
@@ -409,55 +443,333 @@ const bandClass = (p: string, band?: "soft" | "dark") => (band === "dark" ? ` ${
 const eyebrow = (p: string, text?: string) => (text ? `<p class="${p}-eyebrow">${esc(text)}</p>` : "");
 const heading = (text?: string) => (text ? `<h2>${esc(text)}</h2>` : "");
 
+/* ---- default content banks (used when the caller doesn't supply AI copy) ---- */
+
+function defaultFeatures(structure: SiteStructure): Array<{ title: string; description: string }> {
+  return [
+    { title: "You talk to the people doing the work", description: "No call centre and no runaround — you reach the folks who actually show up and get it done." },
+    { title: "You'll know the price up front", description: "We agree what it costs before we start, and if anything changes on the day, we check with you first." },
+    { title: "We keep good notes", description: "You get a clear record of what we did — handy if you ever need it for a landlord, an insurer, or your own files." },
+    { title: "We're close by", description: `We work right across ${structure.uniqueCities.length ? "your area" : "the region"}, so getting someone out doesn't mean waiting forever.` },
+  ];
+}
+
+function defaultTestimonials(): Array<{ quote: string; who: string }> {
+  return [
+    { quote: "They showed up when they said, quoted it clearly, and sent me the paperwork the same day.", who: "Property manager" },
+    { quote: "First company that actually treated our multi-site account like they wanted it.", who: "Facilities lead" },
+    { quote: "Fast, tidy, and no surprises on the invoice. We book them on a standing schedule now.", who: "Operations manager" },
+  ];
+}
+
+/* ------------------------------ services family ------------------------------ */
+
+function renderServices(ctx: VCtx, style: number, head: string, p: string, bc: string): string {
+  const { structure } = ctx;
+  const pillars = structure.pillars.slice(0, 6);
+  const wrap = (inner: string, extra = "") =>
+    `<section class="${p}-section${bc} v-sec v-sec-services v-svc-${style} ${extra}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const label = (pg: SeoPage) => esc(pageListLabel(pg));
+  const short = (pg: SeoPage) => esc(serviceShortLabel(pg));
+  const tagGrid = (pg: SeoPage) => esc(serviceGridTagline(cleanLabel(serviceShortLabel(pg)), pg.pageSlug));
+  const tagRow = (pg: SeoPage) => esc(serviceRowTagline(cleanLabel(serviceShortLabel(pg)), pg.pageSlug));
+  const href = (pg: SeoPage) => ctx.link(pg.pageSlug);
+  const img = (pg: SeoPage) => ctx.img(pg.pageSlug);
+  const num = (i: number) => String(i + 1).padStart(2, "0");
+
+  switch (style) {
+    case 0: // media cards (grid of 3), image on top
+      return wrap(
+        `<div class="${p}-grid ${p}-grid-3">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="${p}-media-card" href="${href(pg)}"><div class="${p}-media-card-thumb"><img src="${img(pg)}" alt="${short(pg)}" loading="lazy" /><span class="${p}-media-card-num">${num(i)}</span></div><div class="${p}-media-card-body"><span class="${p}-media-card-tag">${label(pg)}</span><p>${tagGrid(pg)}</p></div></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 1: // horizontal rows with thumb
+      return wrap(
+        `<div class="v-rows">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="v-row" href="${href(pg)}"><span class="v-row-num">${num(i)}</span><span class="v-row-thumb"><img src="${img(pg)}" alt="${short(pg)}" loading="lazy" /></span><span class="v-row-body"><strong>${label(pg)}</strong><em>${tagRow(pg)}</em></span><span class="v-row-arrow">→</span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 2: // text cards, no image, numbered
+      return wrap(
+        `<div class="${p}-grid ${p}-grid-3 v-svc-textcards">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="v-svc-textcard" href="${href(pg)}"><span class="v-svc-index">${num(i)}</span><h3>${label(pg)}</h3><p>${tagGrid(pg)}</p><span class="v-svc-more">Learn more →</span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 3: // two-column split: sticky heading handled by head, list on right
+      return wrap(
+        `<div class="v-svc-list">${pillars
+          .map(
+            (pg) =>
+              `<a class="v-svc-listitem" href="${href(pg)}"><span class="v-svc-dot"></span><span><strong>${label(pg)}</strong><em>${tagRow(pg)}</em></span><span class="v-row-arrow">→</span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 4: // icon tiles (2x wide grid)
+      return wrap(
+        `<div class="v-svc-icons">${pillars
+          .map(
+            (pg) =>
+              `<a class="v-svc-icon" href="${href(pg)}"><span class="v-svc-glyph" aria-hidden="true"></span><div><h3>${label(pg)}</h3><p>${tagGrid(pg)}</p></div></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 5: // mosaic: first card large, rest small
+      return wrap(
+        `<div class="v-svc-mosaic">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="v-svc-mtile${i === 0 ? " v-svc-mtile-lead" : ""}" href="${href(pg)}"><img src="${img(pg)}" alt="${short(pg)}" loading="lazy" /><span class="v-svc-mcap"><strong>${label(pg)}</strong>${i === 0 ? `<em>${tagGrid(pg)}</em>` : ""}</span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 6: // compact pills
+      return wrap(
+        `<div class="v-svc-pills">${pillars
+          .map((pg) => `<a class="v-svc-pill" href="${href(pg)}">${label(pg)} <span>→</span></a>`)
+          .join("")}</div>`,
+      );
+    case 7: // alternating image/text zigzag
+      return wrap(
+        `<div class="v-svc-zigzag">${pillars
+          .map(
+            (pg, i) =>
+              `<div class="v-svc-zrow${i % 2 ? " v-reverse" : ""}"><a class="v-svc-zmedia" href="${href(pg)}"><img src="${img(pg)}" alt="${short(pg)}" loading="lazy" /></a><div class="v-svc-zcopy"><span class="v-svc-index">${num(i)}</span><h3>${label(pg)}</h3><p>${tagGrid(pg)}</p><a class="v-svc-more" href="${href(pg)}">See ${short(pg)} →</a></div></div>`,
+          )
+          .join("")}</div>`,
+      );
+    case 8: // bordered grid, minimal
+      return wrap(
+        `<div class="v-svc-bordered">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="v-svc-bcell" href="${href(pg)}"><span class="v-svc-index">${num(i)}</span><h3>${label(pg)}</h3><p>${tagRow(pg)}</p></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 9: // overlay cards (text over dimmed image)
+      return wrap(
+        `<div class="${p}-grid ${p}-grid-3 v-svc-overlay">${pillars
+          .map(
+            (pg) =>
+              `<a class="v-svc-ocard" href="${href(pg)}" style="background-image:url('${img(pg)}')"><span class="v-svc-oscrim"></span><span class="v-svc-obody"><strong>${label(pg)}</strong><em>${tagGrid(pg)}</em></span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 10: // wide list with big index numbers
+      return wrap(
+        `<div class="v-svc-bignum">${pillars
+          .map(
+            (pg, i) =>
+              `<a class="v-svc-bignum-row" href="${href(pg)}"><span class="v-svc-bignum-n">${num(i)}</span><span class="v-svc-bignum-body"><h3>${label(pg)}</h3><p>${tagRow(pg)}</p></span></a>`,
+          )
+          .join("")}</div>`,
+      );
+    case 11: // 4-up compact cards with tag
+    default:
+      return wrap(
+        `<div class="v-svc-quad">${pillars
+          .map(
+            (pg) =>
+              `<a class="v-svc-qcard" href="${href(pg)}"><span class="${p}-media-card-tag">${short(pg)}</span><p>${tagGrid(pg)}</p><span class="v-svc-more">Get a quote →</span></a>`,
+          )
+          .join("")}</div>`,
+      );
+  }
+}
+
+/* ------------------------------- feature family ------------------------------ */
+
+function renderFeature(ctx: VCtx, style: number, head: string, p: string, bc: string, feats: Array<{ title: string; description: string }>): string {
+  const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-feature v-feat-${style}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const num = (i: number) => String(i + 1).padStart(2, "0");
+  switch (style) {
+    case 0: // 2-col with square icon
+      return wrap(`<div class="v-features">${feats.map((f) => `<div class="v-feature"><div class="v-feature-ic"></div><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 1: // 3-up cards
+      return wrap(`<div class="${p}-grid ${p}-grid-3 v-feat-cards">${feats.map((f) => `<div class="v-feat-card"><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 2: // numbered list
+      return wrap(`<ol class="v-feat-numbered">${feats.map((f, i) => `<li><span class="v-feat-n">${num(i)}</span><div><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div></li>`).join("")}</ol>`);
+    case 3: // checklist
+      return wrap(`<ul class="v-feat-checklist">${feats.map((f) => `<li><span class="v-feat-check" aria-hidden="true">✓</span><div><strong>${esc(f.title)}</strong><span>${esc(f.description)}</span></div></li>`).join("")}</ul>`);
+    case 4: // horizontal rows with divider
+      return wrap(`<div class="v-feat-rows">${feats.map((f) => `<div class="v-feat-row"><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 5: // pill icon left
+      return wrap(`<div class="v-feat-iconlist">${feats.map((f) => `<div class="v-feat-iconitem"><span class="v-feat-glyph" aria-hidden="true"></span><div><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div></div>`).join("")}</div>`);
+    case 6: // zigzag single column, centered
+      return wrap(`<div class="v-feat-center">${feats.map((f, i) => `<div class="v-feat-centeritem"><span class="v-feat-n">${num(i)}</span><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 7: // 4-up compact
+      return wrap(`<div class="${p}-grid ${p}-grid-4 v-feat-quad">${feats.map((f) => `<div class="v-feat-qcell"><div class="v-feature-ic"></div><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 8: // bordered grid
+      return wrap(`<div class="v-feat-bordered">${feats.map((f) => `<div class="v-feat-bcell"><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div>`).join("")}</div>`);
+    case 9: // big-number stack
+    default:
+      return wrap(`<div class="v-feat-bigstack">${feats.map((f, i) => `<div class="v-feat-bsitem"><span class="v-feat-bsn">${num(i)}</span><div><h3>${esc(f.title)}</h3><p>${esc(f.description)}</p></div></div>`).join("")}</div>`);
+  }
+}
+
+/* -------------------------------- faq family --------------------------------- */
+
+function renderFaq(ctx: VCtx, style: number, head: string, p: string, bc: string, faqs: FaqItem[]): string {
+  const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-faq v-faq-${style}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const num = (i: number) => `Q${i + 1}`;
+  switch (style) {
+    case 0: // card grid
+      return wrap(`<div class="${p}-faq-grid">${faqs.map((f, i) => `<article class="${p}-card"><span class="${p}-card-num">${num(i)}</span><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></article>`).join("")}</div>`);
+    case 1: // accordion
+      return wrap(`<div class="v-acc">${faqs.map((f, i) => `<details class="v-acc-item"${i === 0 ? " open" : ""}><summary><h3>${esc(f.q)}</h3><span class="v-acc-ic"></span></summary><p>${esc(f.a)}</p></details>`).join("")}</div>`);
+    case 2: // two-column list
+      return wrap(`<div class="v-faq-two">${faqs.map((f) => `<div class="v-faq-twoitem"><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></div>`).join("")}</div>`);
+    case 3: // single-column stacked with rule
+      return wrap(`<div class="v-faq-stack">${faqs.map((f) => `<div class="v-faq-stackitem"><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></div>`).join("")}</div>`);
+    case 4: // numbered
+      return wrap(`<ol class="v-faq-numbered">${faqs.map((f, i) => `<li><span class="v-feat-n">${String(i + 1).padStart(2, "0")}</span><div><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></div></li>`).join("")}</ol>`);
+    case 5: // bubble style
+      return wrap(`<div class="v-faq-bubbles">${faqs.map((f) => `<div class="v-faq-bubble"><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></div>`).join("")}</div>`);
+    case 6: // side heading + accordion (uses head inside split)
+      return `<section class="${p}-section${bc} v-sec v-sec-faq v-faq-6"><div class="${p}-wrap ${p}-split"><div>${head}</div><div class="v-acc">${faqs.map((f, i) => `<details class="v-acc-item"${i === 0 ? " open" : ""}><summary><h3>${esc(f.q)}</h3><span class="v-acc-ic"></span></summary><p>${esc(f.a)}</p></details>`).join("")}</div></div></section>`;
+    case 7: // bordered rows
+      return wrap(`<div class="v-faq-bordered">${faqs.map((f) => `<div class="v-faq-brow"><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></div>`).join("")}</div>`);
+    case 8: // compact 3-up cards
+      return wrap(`<div class="${p}-grid ${p}-grid-3 v-faq-compact">${faqs.map((f) => `<article class="v-faq-ccard"><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></article>`).join("")}</div>`);
+    case 9: // Q/A prefixed rows
+    default:
+      return wrap(`<div class="v-faq-qa">${faqs.map((f) => `<div class="v-faq-qaitem"><p class="v-faq-q"><b>Q.</b> ${esc(f.q)}</p><p class="v-faq-a"><b>A.</b> ${esc(f.a)}</p></div>`).join("")}</div>`);
+  }
+}
+
+/* -------------------------------- cta family --------------------------------- */
+
+function renderCta(ctx: VCtx, style: number, p: string, headingText: string, body: string): string {
+  const { b } = ctx;
+  const call = (large = true) => `<a class="${p}-call ${large ? `${p}-call-large` : ""}" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>`;
+  const h = (t: string) => `<h2>${esc(t)}</h2>`;
+  switch (style) {
+    case 0: // split dark band
+      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta v-cta-0"><div class="${p}-wrap ${p}-split"><div>${h(headingText)}<p>${esc(body)}</p></div><div>${call()}</div></div></section>`;
+    case 1: // centered
+      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta v-cta-1"><div class="${p}-wrap v-cta-center">${h(headingText)}<p>${esc(body)}</p>${call()}</div></section>`;
+    case 2: // boxed card on soft bg
+      return `<section class="${p}-section ${p}-section-soft v-sec v-sec-cta v-cta-2"><div class="${p}-wrap"><div class="v-cta-box">${h(headingText)}<p>${esc(body)}</p>${call()}</div></div></section>`;
+    case 3: // gradient panel
+      return `<section class="v-sec v-sec-cta v-cta-3"><div class="${p}-wrap"><div class="v-cta-grad">${h(headingText)}<p>${esc(body)}</p>${call()}</div></div></section>`;
+    case 4: // banner strip (inline)
+      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta v-cta-4"><div class="${p}-wrap v-cta-banner"><div><strong>${esc(headingText)}</strong><span>${esc(body)}</span></div>${call(false)}</div></section>`;
+    case 5: // image-backed
+      return `<section class="v-sec v-sec-cta v-cta-5" style="background-image:url('${ctx.img("cta:" + b.brandName)}')"><span class="v-cta-scrim"></span><div class="${p}-wrap v-cta-center">${h(headingText)}<p>${esc(body)}</p>${call()}</div></section>`;
+    case 6: // stacked with phone big
+      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta v-cta-6"><div class="${p}-wrap v-cta-center">${h(headingText)}<p>${esc(body)}</p><a class="v-cta-phone" href="tel:${esc(b.phoneE164)}">${esc(b.phoneDisplay)}</a></div></section>`;
+    case 7: // two-tone panel
+      return `<section class="${p}-section v-sec v-sec-cta v-cta-7"><div class="${p}-wrap"><div class="v-cta-twotone"><div class="v-cta-twotone-a">${h(headingText)}<p>${esc(body)}</p></div><div class="v-cta-twotone-b">${call()}</div></div></div></section>`;
+    case 8: // minimal underline
+      return `<section class="${p}-section v-sec v-sec-cta v-cta-8"><div class="${p}-wrap v-cta-min">${h(headingText)}<p>${esc(body)}</p>${call(false)}</div></section>`;
+    case 9: // bordered box
+      return `<section class="${p}-section ${p}-section-soft v-sec v-sec-cta v-cta-9"><div class="${p}-wrap"><div class="v-cta-bordered">${h(headingText)}<p>${esc(body)}</p>${call()}</div></div></section>`;
+    case 10: // split with checklist
+      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta v-cta-10"><div class="${p}-wrap ${p}-split"><div>${h(headingText)}<p>${esc(body)}</p></div><div class="v-cta-actions">${call()}<span class="v-cta-note">No obligation · straight answers</span></div></div></section>`;
+    case 11: // full-width accent bar
+    default:
+      return `<section class="v-sec v-sec-cta v-cta-11"><div class="${p}-wrap v-cta-bar"><div><strong>${esc(headingText)}</strong><span>${esc(body)}</span></div>${call(false)}</div></section>`;
+  }
+}
+
+/* ---------------------------- testimonial family ----------------------------- */
+
+function renderTestimonial(ctx: VCtx, style: number, head: string, p: string, bc: string, quotes: Array<{ quote: string; who: string }>): string {
+  const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-testimonial v-tst-${style}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const initials = (who: string) => esc(who.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "•");
+  switch (style) {
+    case 0: // 3-up quote cards
+      return wrap(`<div class="${p}-grid ${p}-grid-3 v-quotes">${quotes.map((t) => `<figure class="v-quote"><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 1: // single big quote
+      return wrap(`<figure class="v-tst-big"><blockquote>“${esc(quotes[0]?.quote || "")}”</blockquote><figcaption>${esc(quotes[0]?.who || "")}</figcaption></figure>`);
+    case 2: // avatar rows
+      return wrap(`<div class="v-tst-rows">${quotes.map((t) => `<figure class="v-tst-row"><span class="v-tst-avatar">${initials(t.who)}</span><div><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></div></figure>`).join("")}</div>`);
+    case 3: // stars + cards
+      return wrap(`<div class="${p}-grid ${p}-grid-3 v-tst-stars">${quotes.map((t) => `<figure class="v-quote"><span class="v-tst-star" aria-hidden="true">★★★★★</span><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 4: // speech bubbles
+      return wrap(`<div class="v-tst-bubbles">${quotes.map((t) => `<figure class="v-tst-bubble"><blockquote>“${esc(t.quote)}”</blockquote><figcaption><span class="v-tst-avatar">${initials(t.who)}</span>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 5: // two-column
+      return wrap(`<div class="v-tst-two">${quotes.map((t) => `<figure class="v-tst-twoitem"><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 6: // marquee-style single row (static wrap)
+      return wrap(`<div class="v-tst-strip">${quotes.map((t) => `<figure class="v-tst-chip"><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 7: // lead quote + supporting stack
+      return wrap(`<div class="v-tst-lead"><figure class="v-tst-leadmain"><blockquote>“${esc(quotes[0]?.quote || "")}”</blockquote><figcaption>${esc(quotes[0]?.who || "")}</figcaption></figure><div class="v-tst-leadside">${quotes.slice(1).map((t) => `<figure><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div></div>`);
+    case 8: // bordered minimal
+      return wrap(`<div class="v-tst-bordered">${quotes.map((t) => `<figure class="v-tst-bcell"><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 9: // centered stacked
+      return wrap(`<div class="v-tst-centered">${quotes.map((t) => `<figure class="v-tst-citem"><blockquote>“${esc(t.quote)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`).join("")}</div>`);
+    case 10: // dark panel single with big mark
+    default:
+      return wrap(`<div class="v-tst-mark"><span class="v-tst-quotemark" aria-hidden="true">“</span><blockquote>${esc(quotes[0]?.quote || "")}</blockquote><figcaption>${esc(quotes[0]?.who || "")}</figcaption></div>`);
+  }
+}
+
+/* ------------------------------ coverage family ------------------------------ */
+
+function renderCoverage(ctx: VCtx, style: number, head: string, p: string, bc: string): string {
+  const { structure } = ctx;
+  const cities = (structure.uniqueCities.length ? structure.uniqueCities : structure.pillars).slice(0, 24);
+  const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-coverage v-cov-${style}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const lbl = (pg: SeoPage) => esc(linkLabel(pg));
+  const href = (pg: SeoPage) => ctx.link(pg.pageSlug);
+  switch (style) {
+    case 0: // tile grid
+      return wrap(`<div class="${p}-city-grid">${cities.map((pg) => `<a class="${p}-city-tile" href="${href(pg)}"><span>${lbl(pg)}</span></a>`).join("")}</div>`);
+    case 1: // multi-column plain list
+      return wrap(`<div class="v-cov-cols">${cities.map((pg) => `<a href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div>`);
+    case 2: // pills
+      return wrap(`<div class="v-cov-pills">${cities.map((pg) => `<a class="v-cov-pill" href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div>`);
+    case 3: // cards with arrow
+      return wrap(`<div class="v-cov-cards">${cities.map((pg) => `<a class="v-cov-card" href="${href(pg)}"><span>${lbl(pg)}</span><em>→</em></a>`).join("")}</div>`);
+    case 4: // inline comma-ish chips
+      return wrap(`<div class="v-cov-inline">${cities.map((pg) => `<a href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div>`);
+    case 5: // two-column bordered
+      return wrap(`<div class="v-cov-two">${cities.map((pg) => `<a class="v-cov-tworow" href="${href(pg)}"><span class="v-cov-dot"></span>${lbl(pg)}</a>`).join("")}</div>`);
+    case 6: // numbered dense grid
+      return wrap(`<div class="v-cov-numbered">${cities.map((pg, i) => `<a href="${href(pg)}"><span class="v-cov-n">${String(i + 1).padStart(2, "0")}</span>${lbl(pg)}</a>`).join("")}</div>`);
+    case 7: // map-list split (list; head acts as intro)
+      return wrap(`<div class="v-cov-maplist"><div class="v-cov-mapart" aria-hidden="true"></div><div class="v-cov-maplinks">${cities.map((pg) => `<a href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div></div>`);
+    case 8: // large tiles with marker
+      return wrap(`<div class="v-cov-bigtiles">${cities.map((pg) => `<a class="v-cov-bigtile" href="${href(pg)}"><span class="v-cov-marker" aria-hidden="true"></span><span>${lbl(pg)}</span></a>`).join("")}</div>`);
+    case 9: // compact chips (small)
+      return wrap(`<div class="v-cov-compact">${cities.map((pg) => `<a class="v-cov-cchip" href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div>`);
+    case 10: // underline links grid
+    default:
+      return wrap(`<div class="v-cov-underline">${cities.map((pg) => `<a href="${href(pg)}">${lbl(pg)}</a>`).join("")}</div>`);
+  }
+}
+
 /** Render one section-archetype variant. */
 export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {}): string {
   const { p, b, structure } = ctx;
   const bc = bandClass(p, payload.band);
-  const head = `${eyebrow(p, payload.eyebrow)}${heading(payload.heading)}`;
+  const head = `${eyebrow(p, payload.eyebrow)}${heading(payload.heading)}${payload.blurb ? `<p class="v-sec-blurb">${esc(payload.blurb)}</p>` : ""}`;
   const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-${id}"><div class="${p}-wrap">${head}${inner}</div></section>`;
+  const seed = payload.styleSeed || b.brandName || b.domain;
 
   switch (id) {
-    case "services-grid": {
-      const cards = structure.pillars
-        .slice(0, 6)
-        .map(
-          (pg, i) => `<a class="${p}-media-card" href="${ctx.link(pg.pageSlug)}"><div class="${p}-media-card-thumb"><img src="${ctx.img(
-            pg.pageSlug,
-          )}" alt="${esc(serviceShortLabel(pg))}" loading="lazy" /><span class="${p}-media-card-num">${String(i + 1).padStart(2, "0")}</span></div><div class="${p}-media-card-body"><span class="${p}-media-card-tag">${esc(
-            pageListLabel(pg),
-          )}</span><p>${esc(serviceGridTagline(cleanLabel(serviceShortLabel(pg)), pg.pageSlug))}</p></div></a>`,
-        )
-        .join("");
-      return wrap(`<div class="${p}-grid ${p}-grid-3">${cards}</div>`);
+    case "services-grid":
+    case "services-rows":
+    case "services": {
+      // Default style keeps parity with the old ids; otherwise dispatch by seed.
+      const forced = id === "services-grid" ? 0 : id === "services-rows" ? 1 : styleIndex(seed, SECTION_STYLE_COUNT.services);
+      return renderServices(ctx, forced, head, p, bc);
     }
-    case "services-rows": {
-      const rows = structure.pillars
-        .slice(0, 6)
-        .map(
-          (pg, i) => `<a class="v-row" href="${ctx.link(pg.pageSlug)}"><span class="v-row-num">${String(i + 1).padStart(
-            2,
-            "0",
-          )}</span><span class="v-row-thumb"><img src="${ctx.img(pg.pageSlug)}" alt="${esc(serviceShortLabel(pg))}" loading="lazy" /></span><span class="v-row-body"><strong>${esc(
-            pageListLabel(pg),
-          )}</strong><em>${esc(serviceRowTagline(cleanLabel(serviceShortLabel(pg)), pg.pageSlug))}</em></span><span class="v-row-arrow">→</span></a>`,
-        )
-        .join("");
-      return wrap(`<div class="v-rows">${rows}</div>`);
-    }
-    case "feature-list": {
-      const feats = [
-        { t: "You talk to the people doing the work", d: "No call centre and no runaround — you reach the folks who actually show up and get it done." },
-        { t: "You'll know the price up front", d: "We agree what it costs before we start, and if anything changes on the day, we check with you first." },
-        { t: "We keep good notes", d: "You get a clear record of what we did — handy if you ever need it for a landlord, an insurer, or your own files." },
-        { t: "We're close by", d: `We work right across ${esc(structure.uniqueCities.length ? "your area" : "the region")}, so getting someone out doesn't mean waiting forever.` },
-      ];
-      return wrap(
-        `<div class="v-features">${feats
-          .map(
-            (f) => `<div class="v-feature"><div class="v-feature-ic"></div><h3>${esc(f.t)}</h3><p>${esc(f.d)}</p></div>`,
-          )
-          .join("")}</div>`,
-      );
+    case "feature-list":
+    case "feature": {
+      const feats = payload.features && payload.features.length ? payload.features : defaultFeatures(structure);
+      const style = id === "feature-list" ? 0 : styleIndex(seed, SECTION_STYLE_COUNT.feature);
+      return renderFeature(ctx, style, head, p, bc, feats);
     }
     case "stat-band": {
       const stats = [
@@ -492,62 +804,34 @@ export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {
       );
     }
     case "testimonial": {
-      const quotes = [
-        { q: "They showed up when they said, quoted it clearly, and sent me the paperwork the same day.", who: "Property manager" },
-        { q: "First company that actually treated our multi-site account like they wanted it.", who: "Facilities lead" },
-        { q: "Fast, tidy, and no surprises on the invoice. We book them on a standing schedule now.", who: "Operations manager" },
-      ];
-      return wrap(
-        `<div class="${p}-grid ${p}-grid-3 v-quotes">${quotes
-          .map(
-            (t) => `<figure class="v-quote"><blockquote>“${esc(t.q)}”</blockquote><figcaption>${esc(t.who)}</figcaption></figure>`,
-          )
-          .join("")}</div>`,
-      );
+      const quotes = payload.testimonials && payload.testimonials.length ? payload.testimonials : defaultTestimonials();
+      const style = styleIndex(seed, SECTION_STYLE_COUNT.testimonial);
+      return renderTestimonial(ctx, style, head, p, bc, quotes);
     }
-    case "coverage-tiles": {
-      const tiles = (structure.uniqueCities.length ? structure.uniqueCities : structure.pillars)
-        .slice(0, 24)
-        .map((pg) => `<a class="${p}-city-tile" href="${ctx.link(pg.pageSlug)}"><span>${esc(linkLabel(pg))}</span></a>`)
-        .join("");
-      return wrap(`<div class="${p}-city-grid">${tiles}</div>`);
+    case "coverage-tiles":
+    case "coverage": {
+      const style = id === "coverage-tiles" ? 0 : styleIndex(seed, SECTION_STYLE_COUNT.coverage);
+      return renderCoverage(ctx, style, head, p, bc);
     }
-    case "cta-band": {
-      const ctaBody = pickSeed(b.brandName, [
-        "Tell us what's going on and we'll take it from there — a real person, a fair price, and a time that suits you.",
-        "Give us a call and we'll sort it: straight answers, no pushy sales, and a crew that actually turns up.",
-        "One quick call is all it takes. We'll explain your options plainly and get you booked in.",
-        "Not sure where to start? Ring us — we'll figure out what you need and keep it simple.",
-      ]);
-      return `<section class="${p}-section ${p}-section-dark v-sec v-sec-cta-band"><div class="${p}-wrap ${p}-split"><div>${heading(
-        payload.heading || "Ready to get started?",
-      )}<p>${esc(ctaBody)}</p></div><div><a class="${p}-call ${p}-call-large" href="tel:${esc(
-        b.phoneE164,
-      )}">Call ${esc(b.phoneDisplay)}</a></div></div></section>`;
+    case "cta-band":
+    case "cta": {
+      const ctaBody =
+        payload.blurb ||
+        pickSeed(seed, [
+          "Tell us what's going on and we'll take it from there — a real person, a fair price, and a time that suits you.",
+          "Give us a call and we'll sort it: straight answers, no pushy sales, and a crew that actually turns up.",
+          "One quick call is all it takes. We'll explain your options plainly and get you booked in.",
+          "Not sure where to start? Ring us — we'll figure out what you need and keep it simple.",
+        ]);
+      const style = id === "cta-band" ? 0 : styleIndex(seed, SECTION_STYLE_COUNT.cta);
+      return renderCta(ctx, style, p, payload.heading || "Ready to get started?", ctaBody);
     }
-    case "faq-grid": {
+    case "faq-grid":
+    case "faq-accordion":
+    case "faq": {
       const faqs = payload.faqs || [];
-      return wrap(
-        `<div class="${p}-faq-grid">${faqs
-          .map(
-            (f, i) => `<article class="${p}-card"><span class="${p}-card-num">Q${i + 1}</span><h3>${esc(f.q)}</h3><p>${esc(
-              f.a,
-            )}</p></article>`,
-          )
-          .join("")}</div>`,
-      );
-    }
-    case "faq-accordion": {
-      const faqs = payload.faqs || [];
-      return wrap(
-        `<div class="v-acc">${faqs
-          .map(
-            (f, i) => `<details class="v-acc-item"${i === 0 ? " open" : ""}><summary><h3>${esc(f.q)}</h3><span class="v-acc-ic"></span></summary><p>${esc(
-              f.a,
-            )}</p></details>`,
-          )
-          .join("")}</div>`,
-      );
+      const style = id === "faq-grid" ? 0 : id === "faq-accordion" ? 1 : styleIndex(seed, SECTION_STYLE_COUNT.faq);
+      return renderFaq(ctx, style, head, p, bc, faqs);
     }
     case "process-steps": {
       const section = payload.section;
@@ -575,7 +859,7 @@ export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {
         b.phoneE164,
       )}">Call ${esc(b.phoneDisplay)}</a></div></div></section>`;
     case "logos-strip": {
-      const items = ["Licensed & insured", "WSIB covered", "Locally staffed", "Same-week booking", "Honest pricing"];
+      const items = ["Licensed & insured", "Locally staffed", "Same-week booking", "Honest pricing", "No call centres"];
       return `<section class="${p}-section v-sec v-sec-logos"><div class="${p}-wrap v-logos">${items
         .map((x) => `<span class="v-logo">${esc(x)}</span>`)
         .join("")}</div></section>`;
@@ -841,10 +1125,11 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-topbar-in a { color: var(--${p}-accent); font-weight: 700; }
 .v-hdr-centered .v-hdr-center { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%; }
 .v-hdr-centered .${p}-brand { justify-self: start; }
-.v-hdr-centered .${p}-links { justify-self: center; margin: 0; }
-.v-hdr-centered .${p}-call { justify-self: end; }
+.v-hdr-centered .${p}-links { justify-self: center; margin: 0 !important; }
+.v-hdr-centered .${p}-call { justify-self: end; margin-left: 0; }
 .v-hdr-logoright .${p}-brand { order: 3; margin-left: 1rem; }
 .v-hdr-logoright .${p}-links { margin-left: 0; margin-right: auto; }
+.v-hdr-logoright .${p}-call { order: 2; margin-left: 0; }
 .v-hdr-pill .v-pill { gap: 0.3rem; background: var(--${p}-bg-deep); padding: 0.3rem; border-radius: 999px; }
 .v-hdr-pill .v-pill a { padding: 0.4rem 0.9rem; border-radius: 999px; }
 .v-hdr-pill .v-pill a:hover { background: var(--${p}-surface); color: var(--${p}-primary); }
@@ -856,12 +1141,15 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hdr-ctaheavy .v-hdr-ctas { display: inline-flex; gap: 0.5rem; align-items: center; }
 .v-btn-sm { padding: 0.5rem 0.9rem; font-size: 0.88rem; }
 .v-hdr-stacked .${p}-nav { flex-wrap: wrap; }
-.v-hdr-stacked .${p}-links { flex-basis: 100%; margin: 0.4rem 0 0; order: 3; justify-content: center; }
+.v-hdr-stacked .${p}-links { flex-basis: 100%; margin: 0.4rem 0 0 !important; order: 3; justify-content: center; }
 .v-hdr-transparent { background: transparent; border-bottom: 1px solid color-mix(in srgb, var(--${p}-muted) 20%, transparent); }
 .v-hdr-wide .${p}-links { gap: 2.2rem; }
 .v-hdr-compact .${p}-nav { min-height: 56px; }
 .v-hdr-accentbar { border-bottom: 3px solid var(--${p}-accent); }
 .v-hdr-split .${p}-links { margin-left: 2rem; margin-right: auto; }
+.v-hdr-split .${p}-call { margin-left: 1rem; }
+.v-hdr-pill .v-pill { margin-left: auto; }
+.v-hdr-minimal .v-spacer { margin: 0; }
 
 /* Footer variants */
 .v-ftr-logo { display: inline-block; width: 40px; height: 40px; border-radius: 10px; flex: none; }
@@ -891,12 +1179,266 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-ftr-accent { border-top: 3px solid var(--${p}-accent); }
 .v-ftr-brandblock .${p}-footer-grid > div:first-child { grid-row: span 1; }
 
+/* ============================ Expanded section styles ============================ */
+.v-sec-blurb { max-width: 60ch; margin: 0.6rem 0 1.6rem; color: var(--${p}-ink-soft); font-size: 1.02rem; }
+.${p}-section-dark .v-sec-blurb { color: var(--${p}-dark-muted); }
+.v-svc-more { display: inline-block; margin-top: 0.6rem; font-weight: 700; color: var(--${p}-primary); font-size: 0.9rem; }
+.v-svc-index { font-family: ${display}; font-weight: 700; font-size: 1.2rem; color: var(--${p}-primary); }
+
+/* Services: text cards (2) */
+.v-svc-textcard { display: block; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.5rem; box-shadow: var(--${p}-shadow); transition: transform 0.16s ease, box-shadow 0.16s ease; }
+.v-svc-textcard:hover { transform: translateY(-3px); box-shadow: var(--${p}-shadow-lift); }
+.v-svc-textcard h3 { margin: 0.5rem 0 0.4rem; }
+.v-svc-textcard p { margin: 0; color: var(--${p}-ink-soft); font-size: 0.95rem; }
+
+/* Services: split list (3) */
+.v-svc-list { display: grid; gap: 0.6rem; }
+.v-svc-listitem { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; padding: 1rem 1.1rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; transition: border-color 0.16s ease, transform 0.16s ease; }
+.v-svc-listitem:hover { border-color: var(--${p}-primary); transform: translateX(3px); }
+.v-svc-listitem strong { display: block; color: var(--${p}-ink); }
+.v-svc-listitem em { font-style: normal; font-size: 0.92rem; color: var(--${p}-ink-soft); }
+.v-svc-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--${p}-primary); }
+
+/* Services: icon tiles (4) */
+.v-svc-icons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; }
+.v-svc-icon { display: grid; grid-template-columns: 52px 1fr; gap: 1rem; align-items: start; padding: 1.3rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; }
+.v-svc-icon:hover { border-color: var(--${p}-primary); }
+.v-svc-glyph { width: 52px; height: 52px; border-radius: 12px; background: var(--${p}-primary-soft); position: relative; }
+.v-svc-glyph::after { content: ""; position: absolute; inset: 15px; border-radius: 5px; background: var(--${p}-primary); }
+.v-svc-icon h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.v-svc-icon p { margin: 0; font-size: 0.93rem; color: var(--${p}-ink-soft); }
+
+/* Services: mosaic (5) */
+.v-svc-mosaic { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 180px; gap: 1rem; }
+.v-svc-mtile { position: relative; overflow: hidden; border-radius: ${radiusCard}px; }
+.v-svc-mtile img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }
+.v-svc-mtile:hover img { transform: scale(1.05); }
+.v-svc-mtile-lead { grid-column: span 2; grid-row: span 2; }
+.v-svc-mcap { position: absolute; left: 0; right: 0; bottom: 0; padding: 1rem; background: linear-gradient(transparent, rgba(0,0,0,0.72)); color: #fff; }
+.v-svc-mcap strong { display: block; }
+.v-svc-mcap em { font-style: normal; font-size: 0.9rem; opacity: 0.9; }
+
+/* Services: pills (6) */
+.v-svc-pills { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+.v-svc-pill { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-radius: 999px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); font-weight: 600; transition: all 0.16s ease; }
+.v-svc-pill:hover { background: var(--${p}-primary); color: #fff; border-color: var(--${p}-primary); }
+.v-svc-pill span { color: var(--${p}-primary); }
+.v-svc-pill:hover span { color: #fff; }
+
+/* Services: zigzag (7) */
+.v-svc-zigzag { display: grid; gap: 2rem; }
+.v-svc-zrow { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+.v-svc-zrow.v-reverse { direction: rtl; }
+.v-svc-zrow.v-reverse > * { direction: ltr; }
+.v-svc-zmedia { display: block; border-radius: ${radiusCard}px; overflow: hidden; aspect-ratio: 16/10; }
+.v-svc-zmedia img { width: 100%; height: 100%; object-fit: cover; }
+.v-svc-zcopy h3 { margin: 0.4rem 0; font-size: 1.4rem; }
+.v-svc-zcopy p { color: var(--${p}-ink-soft); }
+
+/* Services: bordered (8) */
+.v-svc-bordered { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; overflow: hidden; }
+.v-svc-bcell { padding: 1.6rem; border-right: 1px solid var(--${p}-line); border-bottom: 1px solid var(--${p}-line); }
+.v-svc-bcell:hover { background: var(--${p}-bg-deep); }
+.v-svc-bcell h3 { margin: 0.4rem 0 0.3rem; }
+.v-svc-bcell p { margin: 0; font-size: 0.92rem; color: var(--${p}-ink-soft); }
+
+/* Services: overlay (9) */
+.v-svc-overlay .v-svc-ocard { position: relative; display: flex; align-items: flex-end; min-height: 220px; padding: 1.2rem; border-radius: ${radiusCard}px; background-size: cover; background-position: center; overflow: hidden; color: #fff; }
+.v-svc-oscrim { position: absolute; inset: 0; background: linear-gradient(transparent, rgba(0,0,0,0.78)); }
+.v-svc-obody { position: relative; z-index: 1; }
+.v-svc-obody strong { display: block; font-size: 1.1rem; }
+.v-svc-obody em { font-style: normal; font-size: 0.9rem; opacity: 0.92; }
+
+/* Services: big number (10) */
+.v-svc-bignum { display: grid; gap: 0.4rem; }
+.v-svc-bignum-row { display: grid; grid-template-columns: auto 1fr; gap: 1.4rem; align-items: center; padding: 1.3rem 0; border-bottom: 1px solid var(--${p}-line); }
+.v-svc-bignum-n { font-family: ${display}; font-weight: 700; font-size: 2.6rem; color: color-mix(in srgb, var(--${p}-primary) 30%, transparent); line-height: 1; }
+.v-svc-bignum-body h3 { margin: 0 0 0.2rem; }
+.v-svc-bignum-body p { margin: 0; color: var(--${p}-ink-soft); }
+
+/* Services: quad (11) */
+.v-svc-quad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.v-svc-qcard { display: block; padding: 1.3rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; }
+.v-svc-qcard:hover { border-color: var(--${p}-primary); }
+.v-svc-qcard p { font-size: 0.9rem; color: var(--${p}-ink-soft); margin: 0.5rem 0; }
+
+/* Feature families */
+.v-feat-cards .v-feat-card, .v-feat-qcell, .v-feat-bcell { background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.5rem; }
+.v-feat-cards { }
+.v-feat-numbered, .v-faq-numbered { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; counter-reset: none; }
+.v-feat-numbered li, .v-faq-numbered li { display: grid; grid-template-columns: auto 1fr; gap: 1.1rem; align-items: start; }
+.v-feat-n { font-family: ${display}; font-weight: 700; font-size: 1.6rem; color: var(--${p}-primary); line-height: 1; }
+.v-feat-checklist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.v-feat-checklist li { display: grid; grid-template-columns: auto 1fr; gap: 0.8rem; align-items: start; }
+.v-feat-check { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--${p}-primary); color: #fff; font-size: 0.8rem; flex: none; }
+.v-feat-checklist strong { display: block; }
+.v-feat-checklist span { color: var(--${p}-ink-soft); font-size: 0.93rem; }
+.v-feat-rows { display: grid; gap: 0; }
+.v-feat-row { padding: 1.3rem 0; border-bottom: 1px solid var(--${p}-line); }
+.v-feat-row h3 { margin: 0 0 0.3rem; }
+.v-feat-row p { margin: 0; color: var(--${p}-ink-soft); }
+.v-feat-iconlist { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.4rem; }
+.v-feat-iconitem { display: grid; grid-template-columns: 44px 1fr; gap: 1rem; }
+.v-feat-glyph { width: 44px; height: 44px; border-radius: 50%; background: var(--${p}-primary-soft); position: relative; }
+.v-feat-glyph::after { content: ""; position: absolute; inset: 13px; border-radius: 3px; background: var(--${p}-primary); }
+.v-feat-center { max-width: 720px; margin: 0 auto; display: grid; gap: 1.6rem; text-align: center; }
+.v-feat-quad .v-feat-qcell h3 { margin: 0.6rem 0 0.3rem; font-size: 1rem; }
+.v-feat-quad .v-feat-qcell p { margin: 0; font-size: 0.9rem; color: var(--${p}-ink-soft); }
+.v-feat-bordered { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; overflow: hidden; }
+.v-feat-bcell { border: none; border-right: 1px solid var(--${p}-line); border-bottom: 1px solid var(--${p}-line); border-radius: 0; }
+.v-feat-bigstack { display: grid; gap: 1.2rem; }
+.v-feat-bsitem { display: grid; grid-template-columns: auto 1fr; gap: 1.4rem; align-items: baseline; padding-bottom: 1.2rem; border-bottom: 1px solid var(--${p}-line); }
+.v-feat-bsn { font-family: ${display}; font-weight: 700; font-size: 2.2rem; color: color-mix(in srgb, var(--${p}-primary) 34%, transparent); }
+.v-feat-card h3, .v-feat-qcell h3 { margin-top: 0; }
+.v-feat-card p, .v-feat-bcell p { color: var(--${p}-ink-soft); margin-bottom: 0; }
+
+/* FAQ families */
+.v-faq-two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem 2.4rem; }
+.v-faq-twoitem h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.v-faq-twoitem p { margin: 0; color: var(--${p}-ink-soft); }
+.v-faq-stack { display: grid; gap: 0; max-width: 820px; }
+.v-faq-stackitem { padding: 1.3rem 0; border-bottom: 1px solid var(--${p}-line); }
+.v-faq-stackitem h3 { margin: 0 0 0.4rem; }
+.v-faq-stackitem p { margin: 0; color: var(--${p}-ink-soft); }
+.v-faq-bubbles { display: grid; gap: 1rem; max-width: 820px; }
+.v-faq-bubble { position: relative; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.3rem 1.4rem; }
+.v-faq-bubble h3 { margin: 0 0 0.4rem; }
+.v-faq-bubble p { margin: 0; color: var(--${p}-ink-soft); }
+.v-faq-bordered { border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; overflow: hidden; }
+.v-faq-brow { padding: 1.3rem 1.5rem; border-bottom: 1px solid var(--${p}-line); }
+.v-faq-brow:last-child { border-bottom: none; }
+.v-faq-brow h3 { margin: 0 0 0.35rem; }
+.v-faq-brow p { margin: 0; color: var(--${p}-ink-soft); }
+.v-faq-compact .v-faq-ccard { background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.3rem; }
+.v-faq-compact h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.v-faq-compact p { margin: 0; font-size: 0.92rem; color: var(--${p}-ink-soft); }
+.v-faq-qa { display: grid; gap: 1.2rem; max-width: 820px; }
+.v-faq-qaitem { border-left: 3px solid var(--${p}-primary); padding-left: 1.2rem; }
+.v-faq-q { margin: 0 0 0.4rem; font-weight: 600; }
+.v-faq-a { margin: 0; color: var(--${p}-ink-soft); }
+.v-faq-q b, .v-faq-a b { color: var(--${p}-primary); margin-right: 0.3rem; }
+
+/* CTA families */
+.v-cta-center { text-align: center; display: grid; justify-items: center; gap: 1rem; max-width: 680px; margin: 0 auto; }
+.v-cta-box { max-width: 760px; margin: 0 auto; text-align: center; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 2.6rem; box-shadow: var(--${p}-shadow-lift); display: grid; justify-items: center; gap: 0.8rem; }
+.v-cta-3 { padding: 3rem 1.25rem; }
+.v-cta-grad { background: linear-gradient(135deg, var(--${p}-primary), var(--${p}-primary-deep)); color: #fff; border-radius: ${radiusCard}px; padding: 2.8rem; text-align: center; display: grid; justify-items: center; gap: 0.9rem; }
+.v-cta-grad h2, .v-cta-grad p { color: #fff; }
+.v-cta-banner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
+.v-cta-banner strong { display: block; font-family: ${display}; font-size: 1.3rem; }
+.v-cta-banner span { color: var(--${p}-dark-muted); }
+.v-cta-5 { position: relative; display: grid; align-items: center; min-height: 340px; background-size: cover; background-position: center; padding: 3rem 1.25rem; color: #fff; }
+.v-cta-5 .v-cta-scrim { position: absolute; inset: 0; background: rgba(6,10,20,0.66); }
+.v-cta-5 .${p}-wrap { position: relative; z-index: 1; }
+.v-cta-5 h2, .v-cta-5 p { color: #fff; }
+.v-cta-phone { font-family: ${display}; font-weight: 800; font-size: clamp(1.8rem, 4vw, 2.8rem); color: var(--${p}-accent); letter-spacing: -0.02em; }
+.v-cta-twotone { display: grid; grid-template-columns: 1.6fr 1fr; align-items: center; border-radius: ${radiusCard}px; overflow: hidden; }
+.v-cta-twotone-a { background: var(--${p}-dark); color: var(--${p}-dark-text); padding: 2.4rem; }
+.v-cta-twotone-a h2 { color: var(--${p}-dark-text); }
+.v-cta-twotone-a p { color: var(--${p}-dark-muted); }
+.v-cta-twotone-b { background: var(--${p}-primary); padding: 2.4rem; display: grid; place-items: center; }
+.v-cta-min { text-align: center; display: grid; justify-items: center; gap: 0.8rem; border-top: 2px solid var(--${p}-line); border-bottom: 2px solid var(--${p}-line); padding: 2.4rem 0; }
+.v-cta-bordered { border: 2px dashed var(--${p}-line-strong); border-radius: ${radiusCard}px; padding: 2.4rem; text-align: center; display: grid; justify-items: center; gap: 0.8rem; }
+.v-cta-actions { display: grid; gap: 0.6rem; justify-items: start; }
+.v-cta-note { font-size: 0.85rem; color: var(--${p}-dark-muted); }
+.v-cta-11 { background: var(--${p}-accent); }
+.v-cta-bar { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; padding: 1.6rem 1.25rem; }
+.v-cta-bar strong { display: block; font-family: ${display}; font-size: 1.3rem; color: #0b0f19; }
+.v-cta-bar span { color: rgba(11,15,25,0.72); }
+.v-cta-bar .${p}-call { background: #0b0f19; color: #fff; }
+
+/* Testimonial families */
+.v-tst-big { max-width: 860px; margin: 0 auto; text-align: center; }
+.v-tst-big blockquote { font-family: ${display}; font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.35; margin: 0 0 1rem; color: var(--${p}-ink); }
+.v-tst-big figcaption { color: var(--${p}-primary); font-weight: 700; }
+.v-tst-rows { display: grid; gap: 1.2rem; max-width: 820px; }
+.v-tst-row { display: grid; grid-template-columns: auto 1fr; gap: 1.1rem; align-items: start; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.4rem; margin: 0; }
+.v-tst-avatar { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 50%; background: var(--${p}-primary-soft); color: var(--${p}-primary); font-weight: 700; flex: none; }
+.v-tst-row blockquote { margin: 0 0 0.5rem; }
+.v-tst-row figcaption { color: var(--${p}-primary); font-weight: 600; font-size: 0.9rem; }
+.v-tst-stars .v-tst-star, .v-tst-star { color: #f5a623; letter-spacing: 2px; display: block; margin-bottom: 0.6rem; }
+.v-tst-bubbles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4rem; }
+.v-tst-bubble { margin: 0; }
+.v-tst-bubble blockquote { background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.3rem; margin: 0 0 0.8rem; position: relative; }
+.v-tst-bubble blockquote::after { content: ""; position: absolute; left: 24px; bottom: -9px; width: 16px; height: 16px; background: var(--${p}-surface); border-right: 1px solid var(--${p}-line); border-bottom: 1px solid var(--${p}-line); transform: rotate(45deg); }
+.v-tst-bubble figcaption { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; font-size: 0.9rem; }
+.v-tst-two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; }
+.v-tst-twoitem { background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.6rem; margin: 0; }
+.v-tst-twoitem figcaption { margin-top: 0.7rem; color: var(--${p}-primary); font-weight: 600; }
+.v-tst-strip { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 0.5rem; }
+.v-tst-chip { flex: 0 0 300px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.3rem; margin: 0; }
+.v-tst-chip figcaption { margin-top: 0.6rem; font-size: 0.88rem; color: var(--${p}-primary); font-weight: 600; }
+.v-tst-lead { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem; align-items: start; }
+.v-tst-leadmain { background: var(--${p}-primary); color: #fff; border-radius: ${radiusCard}px; padding: 2rem; margin: 0; }
+.v-tst-leadmain blockquote { font-size: 1.25rem; margin: 0 0 0.8rem; }
+.v-tst-leadmain figcaption { opacity: 0.9; }
+.v-tst-leadside { display: grid; gap: 1rem; }
+.v-tst-leadside figure { background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.2rem; margin: 0; }
+.v-tst-leadside figcaption { margin-top: 0.5rem; font-size: 0.85rem; color: var(--${p}-primary); font-weight: 600; }
+.v-tst-bordered { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; overflow: hidden; }
+.v-tst-bcell { padding: 1.6rem; border-right: 1px solid var(--${p}-line); margin: 0; }
+.v-tst-bcell:last-child { border-right: none; }
+.v-tst-bcell figcaption { margin-top: 0.7rem; color: var(--${p}-primary); font-weight: 600; font-size: 0.9rem; }
+.v-tst-centered { max-width: 760px; margin: 0 auto; display: grid; gap: 1.6rem; text-align: center; }
+.v-tst-citem { margin: 0; }
+.v-tst-citem figcaption { margin-top: 0.5rem; color: var(--${p}-primary); font-weight: 600; }
+.v-tst-mark { max-width: 820px; margin: 0 auto; text-align: center; position: relative; }
+.v-tst-quotemark { font-family: ${display}; font-size: 5rem; line-height: 0.6; color: color-mix(in srgb, var(--${p}-primary) 40%, transparent); display: block; }
+.v-tst-mark blockquote { font-size: 1.4rem; margin: 0.5rem 0 1rem; }
+.v-tst-mark figcaption { color: var(--${p}-primary); font-weight: 700; }
+
+/* Coverage families */
+.v-cov-cols { columns: 4; column-gap: 1.5rem; }
+.v-cov-cols a { display: block; padding: 0.4rem 0; color: var(--${p}-ink-soft); break-inside: avoid; }
+.v-cov-cols a:hover { color: var(--${p}-primary); }
+.v-cov-pills { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.v-cov-pill { padding: 0.5rem 1rem; border-radius: 999px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); font-size: 0.9rem; font-weight: 600; }
+.v-cov-pill:hover { background: var(--${p}-primary); color: #fff; border-color: var(--${p}-primary); }
+.v-cov-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; }
+.v-cov-card { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.1rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: 12px; font-weight: 600; }
+.v-cov-card:hover { border-color: var(--${p}-primary); }
+.v-cov-card em { font-style: normal; color: var(--${p}-primary); }
+.v-cov-inline { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; }
+.v-cov-inline a { color: var(--${p}-ink-soft); font-weight: 600; }
+.v-cov-inline a:not(:last-child)::after { content: "·"; margin-left: 0.9rem; color: var(--${p}-muted); }
+.v-cov-inline a:hover { color: var(--${p}-primary); }
+.v-cov-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 2rem; }
+.v-cov-tworow { display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0; border-bottom: 1px solid var(--${p}-line); color: var(--${p}-ink); }
+.v-cov-tworow:hover { color: var(--${p}-primary); }
+.v-cov-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--${p}-primary); flex: none; }
+.v-cov-numbered { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.2rem 1.5rem; }
+.v-cov-numbered a { display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0; color: var(--${p}-ink); }
+.v-cov-numbered a:hover { color: var(--${p}-primary); }
+.v-cov-n { font-family: ${display}; font-weight: 700; color: color-mix(in srgb, var(--${p}-primary) 45%, transparent); font-size: 0.85rem; }
+.v-cov-maplist { display: grid; grid-template-columns: 1fr 1.4fr; gap: 2rem; align-items: start; }
+.v-cov-mapart { min-height: 260px; border-radius: ${radiusCard}px; background: radial-gradient(circle at 30% 40%, var(--${p}-primary-soft), transparent 60%), var(--${p}-bg-deep); border: 1px solid var(--${p}-line); position: relative; }
+.v-cov-mapart::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(var(--${p}-primary) 2px, transparent 2px); background-size: 40px 40px; opacity: 0.35; border-radius: inherit; }
+.v-cov-maplinks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1.5rem; }
+.v-cov-maplinks a { padding: 0.4rem 0; color: var(--${p}-ink-soft); }
+.v-cov-maplinks a:hover { color: var(--${p}-primary); }
+.v-cov-bigtiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.v-cov-bigtile { display: flex; align-items: center; gap: 0.8rem; padding: 1.2rem 1.3rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; font-weight: 600; }
+.v-cov-bigtile:hover { border-color: var(--${p}-primary); transform: translateY(-2px); transition: all 0.16s ease; }
+.v-cov-marker { width: 14px; height: 14px; border-radius: 50% 50% 50% 0; background: var(--${p}-primary); transform: rotate(-45deg); flex: none; }
+.v-cov-compact { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.v-cov-cchip { padding: 0.35rem 0.75rem; border-radius: 8px; background: var(--${p}-bg-deep); border: 1px solid var(--${p}-line); font-size: 0.82rem; color: var(--${p}-ink-soft); }
+.v-cov-cchip:hover { color: var(--${p}-primary); border-color: var(--${p}-primary); }
+.v-cov-underline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.2rem 1.5rem; }
+.v-cov-underline a { padding: 0.5rem 0; color: var(--${p}-ink-soft); border-bottom: 1px solid transparent; }
+.v-cov-underline a:hover { color: var(--${p}-primary); border-bottom-color: var(--${p}-primary); }
+
 @media (max-width: 1020px) {
   .v-hero-grad, .v-hero-stats, .v-hero-twocards, .v-features, .v-ftr-split, .v-ftr-split-cols, .v-ftr-stack-links { grid-template-columns: 1fr; }
   .v-hero-offset-media { position: relative; width: 100%; height: 240px; margin-top: 1.5rem; }
   .v-hero-offset { display: block; min-height: 0; padding: 3rem 0; }
   .v-fcols-2, .v-fcols-3, .v-fcols-4 { grid-template-columns: 1fr 1fr; }
   .v-hdr-centered .v-hdr-center { grid-template-columns: 1fr auto; }
+  .v-svc-icons, .v-svc-mosaic, .v-svc-bordered, .v-svc-quad, .v-feat-iconlist, .v-feat-checklist, .v-feat-bordered, .v-tst-bubbles, .v-tst-two, .v-tst-bordered, .v-tst-lead, .v-cov-cards, .v-faq-two, .v-cta-twotone { grid-template-columns: 1fr 1fr; }
+  .v-svc-mosaic { grid-auto-rows: 160px; }
+  .v-svc-zrow { grid-template-columns: 1fr; }
+  .v-cov-cols { columns: 2; }
+  .v-cov-numbered, .v-cov-underline { grid-template-columns: repeat(2, 1fr); }
+  .v-cov-maplist { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   .v-compare-head span:first-child { display: none; }
@@ -905,6 +1447,10 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-row-thumb { display: none; }
   .v-quotes { grid-template-columns: 1fr; }
   .v-fcols-2, .v-fcols-3, .v-fcols-4 { grid-template-columns: 1fr; }
+  .v-svc-icons, .v-svc-mosaic, .v-svc-bordered, .v-svc-quad, .v-feat-iconlist, .v-feat-checklist, .v-feat-bordered, .v-feat-quad, .v-tst-bubbles, .v-tst-two, .v-tst-bordered, .v-tst-lead, .v-cov-cards, .v-faq-two, .v-cov-two, .v-cta-twotone { grid-template-columns: 1fr; }
+  .v-svc-mtile-lead { grid-column: span 1; grid-row: span 1; }
+  .v-cov-cols { columns: 1; }
+  .v-cov-numbered, .v-cov-underline { grid-template-columns: 1fr; }
 }
 `;
 }

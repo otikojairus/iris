@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconGrid, IconLayers, IconPlus, IconSettings, IconSparkle } from "./icons";
+import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/" },
@@ -15,8 +16,16 @@ const PROJECT_NAV = [
   { seg: "/settings", label: "Settings", icon: IconSettings },
 ];
 
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const projectMatch = pathname.match(/^\/projects\/([^/]+)(\/[^/]+)?/);
   const activeProject = projectMatch?.[1];
 
@@ -52,13 +61,17 @@ export function Sidebar() {
       )}
 
       <div className="iris-sidebar-footer">
-        <div className="iris-user">
-          <span className="iris-avatar">JO</span>
+        <Link href="/account" className="iris-user" data-active={pathname === "/account"} style={{ textDecoration: "none" }}>
+          <span className="iris-avatar">{initials(user?.name || user?.email || "?")}</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>Jairus O.</div>
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>Free plan</div>
+            <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.name || "Account"}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user?.email || "Manage account"}
+            </div>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   );

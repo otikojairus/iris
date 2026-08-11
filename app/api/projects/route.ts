@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildProjectFromUpload } from "@/lib/server/build-project";
 import { listProjects, readProject, saveProject } from "@/lib/server/store";
 import { generateProjectContent } from "@/lib/ai/generate-content";
+import { generateHomeContent } from "@/lib/ai/home-content";
+import { requireAuth } from "@/lib/server/require-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/projects — list all persisted projects. */
 export async function GET() {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const projects = await listProjects();
   return NextResponse.json({ projects });
 }
@@ -18,6 +22,8 @@ export async function GET() {
  * phone, accentColor, themeId.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   let form: FormData;
   try {
     form = await req.formData();
@@ -58,11 +64,14 @@ export async function POST(req: NextRequest) {
     project = { ...project, id: candidate, previewUrl: `/sites/${candidate}` };
   }
 
-  // Generate per-page content (AI when configured, templates otherwise) and persist it
-  // with the project so the live host and export render identical, unique copy.
+  // Generate per-page + homepage content (AI when configured, templates otherwise) and
+  // persist it with the project so the live host and export render identical, unique copy.
   try {
-    const { contentBySlug } = await generateProjectContent({ pages: project.pages, branding: project.branding });
-    project = { ...project, contentBySlug };
+    const [{ contentBySlug }, homeContent] = await Promise.all([
+      generateProjectContent({ pages: project.pages, branding: project.branding }),
+      generateHomeContent({ pages: project.pages, branding: project.branding }),
+    ]);
+    project = { ...project, contentBySlug, homeContent };
   } catch {
     // Non-fatal: pages fall back to on-the-fly template content at render time.
   }

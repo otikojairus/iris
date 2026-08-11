@@ -89,7 +89,7 @@ const FILE_ORDER: Array<{ path: string; kind: "dir" | "file"; language?: string 
 
 /** Generate the complete site for a project (deterministic for a given themeId + seed). */
 export function generateSite(
-  project: Pick<Project, "id" | "pages" | "branding"> & Partial<Pick<Project, "contentBySlug" | "variants">>,
+  project: Pick<Project, "id" | "pages" | "branding"> & Partial<Pick<Project, "contentBySlug" | "variants" | "homeContent">>,
   themeId: string,
   seed = 0,
 ): GeneratedSite {
@@ -134,7 +134,7 @@ export function generateSite(
     "components/site-footer.tsx": renderFooter(theme, b, structure),
     "app/globals.css": renderCss(theme),
     "app/layout.tsx": renderLayout(theme, b),
-    "app/page.tsx": renderHomePage(theme, b, structure, composition),
+    "app/page.tsx": renderHomePage(theme, b, structure, composition, project.homeContent),
     "app/services/page.tsx": renderServicesPage(theme, b, structure),
     "app/[slug]/page.tsx": renderSlugPage(theme, b, structure),
     "app/sitemap.ts": renderSitemap(),

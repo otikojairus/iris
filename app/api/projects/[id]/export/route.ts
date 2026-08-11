@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
 import { buildSiteFiles, readProject } from "@/lib/server/store";
+import { requireAuth } from "@/lib/server/require-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/projects/:id/export — download the generated Next.js source as a .zip. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
   const { id } = await params;
   const project = await readProject(id);
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
