@@ -66,12 +66,23 @@ export async function POST(req: NextRequest) {
 
   // Generate per-page + homepage content (AI when configured, templates otherwise) and
   // persist it with the project so the live host and export render identical, unique copy.
+  // The whole step is bounded so a slow/hanging AI endpoint can never leave the request
+  // stuck — on timeout/error the project still saves and renders from templates.
+  const TIMED_OUT = Symbol("content-timeout");
   try {
-    const [{ contentBySlug }, homeContent] = await Promise.all([
-      generateProjectContent({ pages: project.pages, branding: project.branding }),
-      generateHomeContent({ pages: project.pages, branding: project.branding }),
+    const result = await Promise.race([
+      Promise.all([
+        generateProjectContent({ pages: project.pages, branding: project.branding }),
+        generateHomeContent({ pages: project.pages, branding: project.branding }),
+      ]),
+      new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), 30_000)),
     ]);
-    project = { ...project, contentBySlug, homeContent };
+    if (result !== TIMED_OUT) {
+      const [{ contentBySlug }, homeContent] = result;
+      project = { ...project, contentBySlug, homeContent };
+    }
+    // On timeout we save without AI copy; the live host and export fall back to
+    // on-the-fly template content, so the project is never left half-generated.
   } catch {
     // Non-fatal: pages fall back to on-the-fly template content at render time.
   }

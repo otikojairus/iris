@@ -125,13 +125,15 @@ export function planVariants(
   // Baseline order with optional archetypes interleaved after services.
   const ids = ["logos-strip", servicesStyle, ...optional, "coverage-tiles", faq, "cta-band"];
 
-  // Assign alternating-ish bands, avoiding two darks in a row.
+  // Assign alternating-ish bands, avoiding two darks in a row. Call-to-action and
+  // alert strips default to dark, but flip to soft if the previous band was already
+  // dark so the section rhythm never shows two dark bands back to back.
   const homeSections: Array<{ id: string; band: "soft" | "dark" }> = [];
   let lastDark = false;
   for (const id of ids) {
     let band: "soft" | "dark" = "soft";
     if (id === "cta-band" || id === "alert-strip") {
-      band = "dark";
+      band = lastDark ? "soft" : "dark";
     } else if (id === "logos-strip") {
       band = "soft";
     } else {
@@ -823,7 +825,12 @@ export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {
           "One quick call is all it takes. We'll explain your options plainly and get you booked in.",
           "Not sure where to start? Ring us — we'll figure out what you need and keep it simple.",
         ]);
-      const style = id === "cta-band" ? 0 : styleIndex(seed, SECTION_STYLE_COUNT.cta);
+      // CTA visuals have their own backgrounds; match them to the planned band so a
+      // dark band is never followed by another dark CTA (keeps the section rhythm).
+      const ctaDark = [0, 1, 4, 6, 10];
+      const ctaLight = [2, 3, 5, 7, 8, 9, 11];
+      const ctaBucket = payload.band === "dark" ? ctaDark : ctaLight;
+      const style = ctaBucket[styleIndex(seed, ctaBucket.length)];
       return renderCta(ctx, style, p, payload.heading || "Ready to get started?", ctaBody);
     }
     case "faq-grid":
@@ -1452,5 +1459,79 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-cov-cols { columns: 1; }
   .v-cov-numbered, .v-cov-underline { grid-template-columns: 1fr; }
 }
+
+/* ============================ Dark-band text safety ============================ */
+/* Keeps text readable whenever a section lands on a dark band. Light surface cards
+   (white) revert to dark ink; transparent layouts switch to light text; accent-only
+   numbers/links use the theme accent. This guarantees no text disappears on dark
+   backgrounds regardless of the seeded composition. */
+.${p}-section-dark .v-svc-textcard h3,
+.${p}-section-dark .v-svc-icon h3,
+.${p}-section-dark .v-feat-card h3,
+.${p}-section-dark .v-feat-qcell h3,
+.${p}-section-dark .v-feat-bcell h3,
+.${p}-section-dark .v-acc-item summary h3,
+.${p}-section-dark .v-faq-ccard h3,
+.${p}-section-dark .p-card h3,
+.${p}-section-dark .v-svc-listitem,
+.${p}-section-dark .v-cov-card,
+.${p}-section-dark .v-cov-bigtile,
+.${p}-section-dark .v-cov-card em,
+.${p}-section-dark .v-cov-bigtile span { color: var(--${p}-ink); }
+
+/* Small pills / chips on a dark band become translucent dark chips with light text
+   (matches the core .chip / .city-tile dark treatment) so they read clearly. */
+.${p}-section-dark .v-svc-pill,
+.${p}-section-dark .v-cov-pill,
+.${p}-section-dark .v-cov-cchip {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--${p}-dark-text);
+}
+.${p}-section-dark .v-svc-pill:hover,
+.${p}-section-dark .v-cov-pill:hover {
+  background: var(--${p}-accent);
+  border-color: var(--${p}-accent);
+  color: var(--${p}-dark);
+}
+.${p}-section-dark .v-svc-pill span { color: var(--${p}-accent); }
+.${p}-section-dark .v-svc-pill:hover span { color: var(--${p}-dark); }
+
+/* Transparent layouts (rows, lists, bordered grids, prose) use light text on dark. */
+.${p}-section-dark .v-feature p,
+.${p}-section-dark .v-feat-checklist li span,
+.${p}-section-dark .v-feat-row p,
+.${p}-section-dark .v-feat-iconitem p,
+.${p}-section-dark .v-feat-centeritem p,
+.${p}-section-dark .v-feat-bsitem p,
+.${p}-section-dark .v-faq-twoitem p,
+.${p}-section-dark .v-faq-stackitem p,
+.${p}-section-dark .v-faq-brow p,
+.${p}-section-dark .v-faq-qaitem .v-faq-a,
+.${p}-section-dark .v-faq-qaitem .v-faq-q,
+.${p}-section-dark .v-svc-bcell p,
+.${p}-section-dark .v-svc-bignum-body p,
+.${p}-section-dark .v-svc-zcopy p,
+.${p}-section-dark .v-tst-big blockquote,
+.${p}-section-dark .v-tst-big figcaption,
+.${p}-section-dark .v-cov-cols a,
+.${p}-section-dark .v-cov-inline a,
+.${p}-section-dark .v-cov-tworow,
+.${p}-section-dark .v-cov-numbered a,
+.${p}-section-dark .v-cov-maplinks a,
+.${p}-section-dark .v-cov-underline a { color: var(--${p}-dark-muted); }
+
+/* Accent-numbered elements flip to the theme accent so they stay visible on dark. */
+.${p}-section-dark .v-svc-index,
+.${p}-section-dark .v-svc-more,
+.${p}-section-dark .v-svc-bignum-n,
+.${p}-section-dark .v-feat-n,
+.${p}-section-dark .v-cov-n,
+.${p}-section-dark .v-tst-quotemark,
+.${p}-section-dark .v-faq-q b,
+.${p}-section-dark .v-faq-a b { color: var(--${p}-accent); }
+.${p}-section-dark .v-svc-bignum-n,
+.${p}-section-dark .v-feat-n,
+.${p}-section-dark .v-cov-n { opacity: 0.92; }
 `;
 }

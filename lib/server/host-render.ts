@@ -141,7 +141,7 @@ function document(
   },
 ): string {
   const { theme, b } = shell;
-  const css = renderCss(theme);
+  const css = renderCss(theme, { inline: true });
   const logo = logoDataUri(theme, b.brandName);
   const canonical = absUrl(b.domain, opts.canonicalSlug);
 

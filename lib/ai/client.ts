@@ -16,11 +16,21 @@ export function isAiEnabled(): boolean {
 
 let client: OpenAI | null = null;
 
+/** Hard cap on a single AI request so a hanging endpoint can't stall generation. */
+export const AI_REQUEST_TIMEOUT_MS = 20_000;
+
 /** Lazily construct the OpenAI client (returns null when no key is configured). */
 export function getAiClient(): OpenAI | null {
   if (!isAiEnabled()) return null;
   if (!client) {
-    client = new OpenAI({ apiKey: AI_CONFIG.apiKey, baseURL: AI_CONFIG.baseURL });
+    client = new OpenAI({
+      apiKey: AI_CONFIG.apiKey,
+      baseURL: AI_CONFIG.baseURL,
+      // Bound each request; content generation falls back to templates on timeout
+      // instead of leaving the user stuck on "Generating…" forever.
+      timeout: AI_REQUEST_TIMEOUT_MS,
+      maxRetries: 1,
+    });
   }
   return client;
 }

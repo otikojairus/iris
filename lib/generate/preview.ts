@@ -19,7 +19,7 @@ const logoDataUri = (theme: Theme, brandName: string): string =>
 
 export function buildPreviewHtml(theme: Theme, b: Branding, structure: SiteStructure, composition: Composition): string {
   const p = theme.prefix;
-  const css = renderCss(theme);
+  const css = renderCss(theme, { inline: true });
   const logo = logoDataUri(theme, b.brandName);
   const ctx: Ctx = { theme, b, structure };
 

@@ -200,7 +200,7 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
         )}
       </section>`;
     case "alert":
-      return `<section class="${p}-section ${p}-section-dark">
+      return `<section class="${p}-section${band === "dark" ? ` ${p}-section-dark` : ` ${p}-section-soft`}">
         <div class="${p}-wrap"><div class="${p}-alert">
           <div><strong>Need a crew soon?</strong><p>We keep crews on standby for fast, same-week service.</p></div>
           <a class="${p}-call" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>
@@ -225,7 +225,7 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
       </section>`;
     }
     case "cta":
-      return `<section class="${p}-section ${p}-section-dark">
+      return `<section class="${p}-section${band === "dark" ? ` ${p}-section-dark` : ` ${p}-section-soft`}">
         <div class="${p}-wrap ${p}-split">
           <div><h2>Ready to Book?</h2><p>Tell us what you need and we will handle the rest — clear quotes, real crews, documented work.</p></div>
           <div><a class="${p}-call ${p}-call-large" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a></div>
@@ -355,7 +355,7 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
         )}
       </section>`;
     case "alert":
-      return `<section className="${p}-section ${p}-section-dark">
+      return `<section className="${p}-section${bandClass}">
         <div className="${p}-wrap"><div className="${p}-alert">
           <div><strong>Need a crew soon?</strong><p>We keep crews on standby for fast, same-week service.</p></div>
           <a className="${p}-call" href={\`tel:\${PHONE_E164}\`}>Call {PHONE_DISPLAY}</a>
@@ -381,7 +381,7 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
         )}
       </section>`;
     case "cta":
-      return `<section className="${p}-section ${p}-section-dark">
+      return `<section className="${p}-section${bandClass}">
         <div className="${p}-wrap ${p}-split">
           <div><h2>Ready to Book?</h2><p>Tell us what you need and we will handle the rest — clear quotes, real crews, documented work.</p></div>
           <div><a className="${p}-call ${p}-call-large" href={\`tel:\${PHONE_E164}\`}>Call {PHONE_DISPLAY}</a></div>
