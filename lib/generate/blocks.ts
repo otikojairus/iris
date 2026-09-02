@@ -14,7 +14,14 @@ import type { HomeContent } from "@/lib/types";
 export type Ctx = { theme: Theme; b: Branding; structure: SiteStructure };
 
 export type HeroVariant = "split" | "center" | "band";
-export type SectionId = "strip" | "intro" | "services" | "stats" | "alert" | "chips" | "cities" | "cta" | "faq";
+export const MICRO_SECTION_IDS = [
+  "availability-bar", "trust-score", "license-strip", "price-promise", "response-window",
+  "service-match", "audience-chips", "project-sizes", "team-note", "workmanship-promise",
+  "photo-proof", "booking-steps", "contact-options", "hours-card", "local-note",
+  "equipment-strip", "aftercare-note", "quote-checklist", "mini-case-study", "quick-links",
+] as const;
+export type MicroSectionId = (typeof MICRO_SECTION_IDS)[number];
+export type SectionId = "strip" | "intro" | "services" | "stats" | "alert" | "chips" | "cities" | "cta" | "faq" | MicroSectionId;
 
 export type Composition = {
   hero: HeroVariant;
@@ -64,10 +71,11 @@ export function compose(seedStr: string): Composition {
   const hero = pick<HeroVariant>(rng, ["split", "center", "band"]);
 
   const chosen = shuffle(rng, [...OPTIONAL]).slice(0, 1 + Math.floor(rng() * 3));
+  const micro = shuffle(rng, [...MICRO_SECTION_IDS]).slice(0, 3 + Math.floor(rng() * 3));
   const pre = chosen.filter((s) => s === "stats" || s === "alert");
   const post = chosen.filter((s) => s === "chips" || s === "cta");
-
-  const sections: SectionId[] = ["strip", "intro", ...pre, "services", ...post, "cities", "faq"];
+  const cut = 1 + Math.floor(rng() * Math.max(1, micro.length - 1));
+  const sections: SectionId[] = ["strip", "intro", ...micro.slice(0, cut), ...pre, "services", ...post, ...micro.slice(cut), "cities", "faq"];
 
   const band = {} as Record<SectionId, "soft" | "dark">;
   let last = "soft";
@@ -103,6 +111,72 @@ export const FAQS = [
   { q: "How do I know which service I need?", a: "Tell us what you need and where the site is. If you know your city, start there; if not, describe the site and we will point you to the right service and quote it." },
   { q: "Can I just call before I figure it all out?", a: "Yes. Call us, describe your site, what is needed, and how soon. We take it from there and give you a real arrival window." },
 ];
+
+function isMicroSection(id: SectionId): id is MicroSectionId {
+  return MICRO_SECTION_IDS.includes(id as MicroSectionId);
+}
+
+/** Static markup shared by the lightweight preview and exported homepage. */
+function renderMicro(ctx: Ctx, id: MicroSectionId, tsx: boolean): string {
+  const { theme, b, structure } = ctx;
+  const p = theme.prefix;
+  const c = tsx ? "className" : "class";
+  const phone = `<a ${c}="${p}-call" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>`;
+  const services = structure.pillars.slice(0, 4)
+    .map((page) => `<a href="/${esc(page.pageSlug)}">${esc(serviceShortLabel(page))}</a>`).join("");
+  const cities = structure.uniqueCities.slice(0, 4)
+    .map((page) => `<a href="/${esc(page.pageSlug)}">${esc(linkLabel(page))}</a>`).join("");
+  const wrap = (inner: string) =>
+    `<section ${c}="${p}-section ${p}-section-soft v-sec v-micro v-micro-${id}"><div ${c}="${p}-wrap">${inner}</div></section>`;
+
+  switch (id) {
+    case "availability-bar":
+      return wrap(`<div ${c}="v-micro-bar"><span ${c}="v-micro-live"><i></i>Taking bookings now</span><strong>Talk to a real person today</strong>${phone}</div>`);
+    case "trust-score":
+      return wrap(`<div ${c}="v-micro-score"><div><span ${c}="v-micro-stars">★★★★★</span><strong>Recommended by local customers</strong></div><p>Clear quotes · Careful work · Reliable arrival times</p></div>`);
+    case "license-strip":
+      return wrap(`<div ${c}="v-micro-badges"><span>✓ Licensed &amp; insured</span><span>✓ Safety-first crews</span><span>✓ Clear job records</span><span>✓ Local coverage</span></div>`);
+    case "price-promise":
+      return wrap(`<div ${c}="v-micro-split"><span ${c}="v-micro-index">01</span><div><p ${c}="${p}-eyebrow">Our price promise</p><h2>No surprises when the invoice arrives.</h2></div><p>We agree the scope and price before work starts. If the job changes, you hear it from us first.</p></div>`);
+    case "response-window":
+      return wrap(`<div ${c}="v-micro-window"><div><span>Response window</span><strong>Same-day answers</strong></div><div><span>Booking</span><strong>A time you can plan around</strong></div>${phone}</div>`);
+    case "service-match":
+      return wrap(`<div ${c}="v-micro-match"><div><p ${c}="${p}-eyebrow">Not sure what to book?</p><h2>Start with what you can see.</h2><p>Tell us what is happening and we will match the right crew.</p></div><div ${c}="v-micro-linkgrid">${services || `<a href="/services">Browse all services</a>`}</div></div>`);
+    case "audience-chips":
+      return wrap(`<div ${c}="v-micro-centered"><p ${c}="${p}-eyebrow">Built around your site</p><div ${c}="v-micro-chips"><span>Homeowners</span><span>Property managers</span><span>Facilities teams</span><span>Local businesses</span></div></div>`);
+    case "project-sizes":
+      return wrap(`<div ${c}="v-micro-scale"><span>One-off repair</span><i></i><span>Planned project</span><i></i><span>Multi-site support</span><strong>One crew, any scale.</strong></div>`);
+    case "team-note":
+      return wrap(`<div ${c}="v-micro-note"><span ${c}="v-micro-avatar">${esc(b.brandName.slice(0, 1).toUpperCase())}</span><blockquote>“You will speak with someone who understands the work — not a call centre reading from a script.”</blockquote><strong>The ${esc(b.brandName)} team</strong></div>`);
+    case "workmanship-promise":
+      return wrap(`<div ${c}="v-micro-promise"><span aria-hidden="true">✓</span><div><p ${c}="${p}-eyebrow">Workmanship promise</p><h2>Done properly. Left tidy. Explained clearly.</h2></div><a ${c}="${p}-secondary" href="/services">See how we work →</a></div>`);
+    case "photo-proof": {
+      const src = cardImage(ctx, `${b.domain}:proof`);
+      const image = tsx
+        ? `<Image src="${src}" alt="${esc(b.brandName)} completed work" width={1600} height={1000} loading="lazy" sizes="(max-width: 720px) 100vw, 50vw" />`
+        : `<img src="${src}" alt="${esc(b.brandName)} completed work" loading="lazy" />`;
+      return wrap(`<div ${c}="v-micro-photo">${image}<div><p ${c}="${p}-eyebrow">Proof, not promises</p><h2>We document the work before we leave.</h2><p>Useful photos and clear notes for your records, landlord, team, or insurer.</p></div></div>`);
+    }
+    case "booking-steps":
+      return wrap(`<ol ${c}="v-micro-steps"><li><span>1</span><strong>Tell us what is happening</strong></li><li><span>2</span><strong>Get a clear plan and price</strong></li><li><span>3</span><strong>Choose a time that works</strong></li></ol>`);
+    case "contact-options":
+      return wrap(`<div ${c}="v-micro-contact"><div><p ${c}="${p}-eyebrow">A simple first step</p><h2>Call now or explore your options.</h2></div><div ${c}="${p}-actions">${phone}<a ${c}="${p}-secondary" href="/services">Browse services</a></div></div>`);
+    case "hours-card":
+      return wrap(`<div ${c}="v-micro-hours"><div><span>MON–FRI</span><strong>7:00–19:00</strong></div><div><span>WEEKENDS</span><strong>On-call support</strong></div><div><span>URGENT</span><strong>${esc(b.phoneDisplay)}</strong></div></div>`);
+    case "local-note":
+      return wrap(`<div ${c}="v-micro-local"><span ${c}="v-micro-pin" aria-hidden="true"></span><div><p ${c}="${p}-eyebrow">Close enough to be useful</p><h2>${cities ? `Working across ${structure.uniqueCities.length || 1}+ local service areas.` : "Local crews, practical arrival times."}</h2></div><div ${c}="v-micro-citylinks">${cities || `<a href="/services">View coverage</a>`}</div></div>`);
+    case "equipment-strip":
+      return wrap(`<div ${c}="v-micro-equipment"><strong>Ready for the job</strong><span>Specialist tools</span><span>Site-safe equipment</span><span>Clean-up included</span><span>Job notes supplied</span></div>`);
+    case "aftercare-note":
+      return wrap(`<div ${c}="v-micro-after"><span>After the work</span><h2>You are not left guessing.</h2><p>We explain what was done, what to watch for, and when — if ever — you should follow up.</p></div>`);
+    case "quote-checklist":
+      return wrap(`<div ${c}="v-micro-quote"><div><p ${c}="${p}-eyebrow">What your quote includes</p><h2>A useful number, not a vague estimate.</h2></div><ul><li>✓ Clear scope</li><li>✓ Labour and materials</li><li>✓ Realistic timing</li><li>✓ No hidden add-ons</li></ul></div>`);
+    case "mini-case-study":
+      return wrap(`<article ${c}="v-micro-case"><span>Recent job</span><div><h2>From first call to finished work, without the runaround.</h2><p>We assessed the site, agreed the plan, completed the work, and sent the record the same day.</p></div><strong>01 day<br /><small>typical turnaround</small></strong></article>`);
+    case "quick-links":
+      return wrap(`<nav ${c}="v-micro-quick" aria-label="Popular services"><strong>Popular right now</strong>${services || `<a href="/services">All services</a>`}<a href="/services">View all →</a></nav>`);
+  }
+}
 
 /* ================= PREVIEW RENDERERS (static HTML) ================= */
 
@@ -161,6 +235,8 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
   const wrap = (inner: string) => `<div class="${p}-wrap">${inner}</div>`;
   const eyebrow = (text: string) => `<p class="${p}-eyebrow">${text}</p>`;
 
+  if (isMicroSection(id)) return renderMicro(ctx, id, false);
+
   switch (id) {
     case "strip":
       return `<div class="${p}-strip"><div class="${p}-wrap ${p}-strip-inner">
@@ -183,7 +259,7 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
         </a>`,
         )
         .join("");
-      return `<section class="${p}-section${bandClass}">
+      return `<section class="${p}-section${bandClass} v-sec v-sec-services v-svc-0">
         ${wrap(eyebrow("// CORE SERVICES") + `<h2>What We Do</h2><div class="${p}-grid ${p}-grid-3">${cards}</div>`)}
       </section>`;
     }
@@ -220,7 +296,7 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
         .slice(0, 24)
         .map((page) => `<a class="${p}-city-tile" href="#"><span>${esc(linkLabel(page))}</span></a>`)
         .join("");
-      return `<section class="${p}-section${bandClass}">
+      return `<section class="${p}-section${bandClass} v-sec v-sec-coverage v-cov-0">
         ${wrap(eyebrow("// FIND YOUR CITY") + `<h2>Local Coverage</h2><div class="${p}-city-grid">${tiles}</div>`)}
       </section>`;
     }
@@ -233,7 +309,7 @@ export function renderSectionPreview(ctx: Ctx, id: SectionId, band: "soft" | "da
       </section>`;
     case "faq": {
       const cards = FAQS.map((f, i) => `<article class="${p}-card"><span class="${p}-card-num">Q${i + 1}</span><h3>${esc(f.q)}</h3><p>${esc(f.a)}</p></article>`).join("");
-      return `<section class="${p}-section${bandClass}">
+      return `<section class="${p}-section${bandClass} v-sec v-sec-faq v-faq-0">
         ${wrap(eyebrow("// COMMON QUESTIONS") + `<h2>Before You Call</h2><div class="${p}-faq-grid">${cards}</div>`)}
       </section>`;
     }
@@ -310,6 +386,8 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
   const wrap = (inner: string) => `<div className="${p}-wrap">${inner}</div>`;
   const eyebrow = (text: string) => `<p className="${p}-eyebrow">${text}</p>`;
 
+  if (isMicroSection(id)) return renderMicro(ctx, id, true);
+
   switch (id) {
     case "strip":
       return `<div className="${p}-strip"><div className="${p}-wrap ${p}-strip-inner">
@@ -338,7 +416,7 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
           </Link>
         );
       })}`;
-      return `<section className="${p}-section${bandClass}">
+      return `<section className="${p}-section${bandClass} v-sec v-sec-services v-svc-0">
         ${wrap(eyebrow("// CORE SERVICES") + `<h2>What We Do</h2><div className="${p}-grid ${p}-grid-3">${card}</div>`)}
       </section>`;
     }
@@ -370,7 +448,7 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
       </section>`;
     }
     case "cities":
-      return `<section className="${p}-section${bandClass}">
+      return `<section className="${p}-section${bandClass} v-sec v-sec-coverage v-cov-0">
         ${wrap(
           eyebrow("// FIND YOUR CITY") +
             `<h2>Local Coverage</h2><div className="${p}-city-grid">
@@ -391,7 +469,7 @@ export function renderSectionTsx(ctx: Ctx, id: SectionId, band: "soft" | "dark")
       const cards = FAQS.map(
         (f, i) => `<article className="${p}-card" key={${i}}><span className="${p}-card-num">Q${i + 1}</span><h3>{${JSON.stringify(f.q)}}</h3><p>{${JSON.stringify(f.a)}}</p></article>`,
       ).join("");
-      return `<section className="${p}-section${bandClass}">
+      return `<section className="${p}-section${bandClass} v-sec v-sec-faq v-faq-0">
         ${wrap(eyebrow("// COMMON QUESTIONS") + `<h2>Before You Call</h2><div className="${p}-faq-grid">${cards}</div>`)}
       </section>`;
     }

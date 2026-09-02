@@ -137,12 +137,15 @@ export default function NewProjectPage() {
                 <label className="iris-label">What are we building?</label>
                 <textarea
                   className="iris-textarea"
-                  placeholder="Describe the business, services, and the kind of site you want…"
+                  placeholder="Describe the business in your own words — what you do, who you help, how you work, and what makes customers call you…"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   autoFocus
                 />
-                <span className="iris-hint">Be specific about services and locations — it shapes copy and structure.</span>
+                <span className="iris-hint">
+                  This is what Iris writes the site copy from, so describe the business the way you would to a customer. The more real detail you give, the
+                  less generic every page reads.
+                </span>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {EXAMPLE_PROMPTS.map((ex) => (

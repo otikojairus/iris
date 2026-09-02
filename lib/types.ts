@@ -139,6 +139,12 @@ export type HomeContent = {
   testimonials: Array<{ quote: string; who: string }>;
   /** 3+ homepage FAQs written like a person. */
   faqs: FaqItem[];
+  /**
+   * A short, customer-facing tagline (<=90 chars) used in page titles, meta descriptions
+   * and the footer. Written as copy rather than sliced out of the operator's description,
+   * which is often phrased as an instruction to the builder.
+   */
+  tagline: string;
   source: "ai" | "template";
 };
 

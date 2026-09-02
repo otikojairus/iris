@@ -29,6 +29,24 @@ export type EditPatch = {
   contentEdit?: ContentEdit;
 };
 
+/**
+ * What the user is actually looking at in the staged preview. Copy edits that don't name
+ * a page ("make this intro friendlier") resolve to this page instead of the whole site.
+ */
+export type EditContext = {
+  /** Slug of the page open in the preview: "/" for the homepage, "/toronto-repair", … */
+  currentSlug?: string;
+  /** Human label for that page, used in prompts and replies. */
+  currentLabel?: string;
+};
+
+/** Matches the ways people refer to the page they're currently looking at. */
+const REFERS_TO_CURRENT =
+  /(this page|current page|the current one|this one|the page i'?m on|the page im on|this section|on this page|right here|\bhere\b)/;
+
+/** The query token that tells the chat route to use the staged page. */
+export const CURRENT_PAGE_QUERY = "__current__";
+
 /** Pick a variant from a pool that differs from the current one. */
 function differentVariant(pool: string[], current?: string): string {
   const options = pool.filter((v) => v !== current);
@@ -63,14 +81,46 @@ const NAMED_COLORS: Record<string, string> = {
 };
 
 /** Detect a content (copy) edit request from free text. Returns undefined if none. */
-function detectContentEdit(text: string, instruction: string): ContentEdit | undefined {
+function detectContentEdit(text: string, instruction: string, context: EditContext = {}): ContentEdit | undefined {
   // Verbs / nouns that clearly indicate the user wants to change the WORDS on the site.
   const contentVerb = /(rewrite|reword|rephrase|edit|change|update|make|shorten|lengthen|expand|tweak|improve|fix|redo|refresh|punch|soften|simplify)/;
+  // The subset that can only mean "change the words", even with no content noun present.
+  const copyVerb = /(rewrite|reword|rephrase|redo|refresh|shorten|lengthen|expand|improve|simplify|soften|punch)/;
   const contentNoun = /(intro|introduction|copy|content|text|words|wording|headline|heading|title|hero|faq|faqs|question|answer|paragraph|body|description|blurb|about|write-?up|writeup|section)/;
+
+  // Which pages the request is aimed at. Resolved up front because naming a page is
+  // itself a strong signal that this is a copy edit.
+  const globalWords = /(all pages|every page|whole site|entire site|across the site|all the copy|everywhere|globally|all of the pages)/.test(text);
+  // Capture the page name immediately before the word "page", stripped of leading verbs/articles.
+  const namedPageMatch = instruction.match(/([A-Za-z][A-Za-z'&-]*(?:\s+[A-Za-z][A-Za-z'&-]*){0,3})\s+page\b/i);
+  const homepage = /(homepage|home page|the home\b|landing page|front page)/.test(text);
+  // Verbs/articles that may precede the real page name and should be trimmed off.
+  const stripLead =
+    /^(?:the|a|an|this|that|my|our|please|can you|could you|rewrite|reword|rephrase|edit|change|update|make|shorten|expand|improve|fix|redo|refresh|on|for|to)\s+/i;
+  const cleanNamed = (raw: string): string => {
+    let s = raw.trim();
+    let prev = "";
+    while (s !== prev) {
+      prev = s;
+      s = s.replace(stripLead, "").trim();
+    }
+    return s;
+  };
+  const named = namedPageMatch ? cleanNamed(namedPageMatch[1]) : "";
+  const namedTarget = named && !/^(this|current)$/i.test(named) ? named : "";
+  const refersToStaged = !!context.currentSlug && REFERS_TO_CURRENT.test(text);
+
   const wantsContent = contentNoun.test(text) || /(less salesy|more friendly|friendlier|punchier|sound|tone|voice)/.test(text);
   if (!wantsContent && !contentVerb.test(text)) return undefined;
-  // Require at least a content noun OR an explicit tone phrase; otherwise it's likely a design edit.
-  if (!contentNoun.test(text) && !/(less salesy|friendlier|punchier|shorter|more friendly|more professional|tone|voice|copy)/.test(text)) {
+  // "rewrite the homepage", "shorten the Toronto page", "redo this page" — a copy verb
+  // aimed at a specific page needs no content noun to be unambiguous.
+  const pointsAtPage = copyVerb.test(text) && (homepage || !!namedTarget || refersToStaged);
+  // Otherwise require a content noun or an explicit tone phrase; else it's likely design.
+  if (
+    !pointsAtPage &&
+    !contentNoun.test(text) &&
+    !/(less salesy|friendlier|punchier|shorter|more friendly|more professional|tone|voice|copy)/.test(text)
+  ) {
     return undefined;
   }
 
@@ -106,37 +156,20 @@ function detectContentEdit(text: string, instruction: string): ContentEdit | und
     else if (!spec.fields.includes("faqs")) spec.fields.push("faqs");
   }
 
-  // Scope: global vs a named page.
-  const globalWords = /(all pages|every page|whole site|entire site|across the site|all the copy|everywhere|globally|all of the pages)/.test(text);
-  // Capture the page name immediately before the word "page", stripped of leading verbs/articles.
-  const namedPage = instruction.match(/([A-Za-z][A-Za-z'&-]*(?:\s+[A-Za-z][A-Za-z'&-]*){0,3})\s+page\b/i);
-  const homepage = /(homepage|home page|the home\b|landing page|front page)/.test(text);
-  // Verbs/articles that may precede the real page name and should be trimmed off.
-  const stripLead =
-    /^(?:the|a|an|this|that|my|our|please|can you|could you|rewrite|reword|rephrase|edit|change|update|make|shorten|expand|improve|fix|redo|refresh|on|for|to)\s+/i;
-  const cleanNamed = (raw: string): string => {
-    let s = raw.trim();
-    let prev = "";
-    while (s !== prev) {
-      prev = s;
-      s = s.replace(stripLead, "").trim();
-    }
-    return s;
-  };
-
   if (homepage) return { scope: "page", query: "home", spec };
   if (globalWords) return { scope: "global", spec };
-  if (namedPage) {
-    const q = cleanNamed(namedPage[1]);
-    if (q && !/^(this|current)$/i.test(q)) return { scope: "page", query: q, spec };
-  }
+  if (namedTarget) return { scope: "page", query: namedTarget, spec };
 
-  // Default: if they clearly asked for a copy change but named nothing, treat as global.
+  // Nothing named: edit the page the user is looking at in the preview. That's what
+  // "make this intro friendlier" means when you're staring at a page.
+  if (context.currentSlug) return { scope: "page", query: CURRENT_PAGE_QUERY, spec };
+
+  // No staged page to fall back on — treat it as a site-wide copy change.
   return { scope: "global", spec };
 }
 
 /** Deterministic fallback: map obvious keywords to a patch. */
-function heuristicEdit(project: Project, instruction: string): EditResult {
+function heuristicEdit(project: Project, instruction: string, context: EditContext = {}): EditResult {
   const text = instruction.toLowerCase();
   const patch: EditPatch = {};
   const notes: string[] = [];
@@ -200,7 +233,7 @@ function heuristicEdit(project: Project, instruction: string): EditResult {
   }
 
   // Content (copy) edits — only if no design change was clearly requested, or in addition.
-  const contentEdit = detectContentEdit(text, instruction);
+  const contentEdit = detectContentEdit(text, instruction, context);
   if (contentEdit) {
     patch.contentEdit = contentEdit;
     // The concrete note (which pages/fields changed) is written by the chat route after
@@ -209,8 +242,8 @@ function heuristicEdit(project: Project, instruction: string): EditResult {
   }
 
   const reply = notes.length
-    ? `Done — I ${notes.join(", ")} and refreshed the preview.`
-    : "I can change your site's design or its copy. Try: \"use the plum theme\", \"change the accent to teal\", \"shuffle the layout\", or for words: \"rewrite the intro to sound friendlier\", \"make the hero punchier\", \"shorten the intro\", \"add an FAQ about pricing\", or \"rewrite the Toronto page\".";
+    ? `Done — I ${notes.join(", ")} on the staged site.`
+    : "I can change your site's design or its copy. Try: \"use the plum theme\", \"change the accent to teal\", \"shuffle the layout\", or for words: \"rewrite this intro to sound friendlier\", \"make the hero punchier\", \"add an FAQ about pricing\", or \"rewrite the copy on all pages\".";
 
   return { patch, reply, source: "heuristic" };
 }
@@ -228,6 +261,7 @@ DESIGN fields:
 CONTENT edits (changing the WORDS on pages) — set "contentEdit" when the user asks to rewrite/reword/shorten/expand copy, change the intro/headline/FAQs/sections, change tone/voice, add an FAQ, etc.:
 - contentEdit.scope: "global" (all content pages) or "page" (a specific page)
 - contentEdit.query: the page or section the user named, verbatim (e.g. "Toronto", "home", "the emergency page"). Omit for global edits.
+- IMPORTANT: the user is looking at one page in a live preview (given below as "Open in the preview"). If they say "this page", "this intro", "here", or name no page at all, set scope "page" and query "${CURRENT_PAGE_QUERY}" so the edit lands on the page they can see. Only use scope "global" when they clearly ask for all pages / the whole site.
 - contentEdit.tone: one of "friendly" | "shorter" | "professional" | "punchier" | "less-salesy" if a tone/length change is implied.
 - contentEdit.fields: subset of ["intro","headline","sections","faqs","meta"] the edit targets; omit to rewrite the whole page.
 - contentEdit.faqTopic: for "add/change an FAQ about X", the topic X.
@@ -259,7 +293,11 @@ type AiEditJson = {
 const VALID_TONES = new Set(["friendly", "shorter", "professional", "punchier", "less-salesy"]);
 const VALID_FIELDS = new Set(["intro", "headline", "sections", "faqs", "meta"]);
 
-function coerceContentEdit(raw: AiEditJson["contentEdit"], instruction: string): ContentEdit | undefined {
+function coerceContentEdit(
+  raw: AiEditJson["contentEdit"],
+  instruction: string,
+  context: EditContext = {},
+): ContentEdit | undefined {
   if (!raw) return undefined;
   const spec: ContentEditSpec = { guidance: (raw.guidance || instruction).trim() };
   if (raw.tone && VALID_TONES.has(raw.tone)) spec.tone = raw.tone as ContentEditSpec["tone"];
@@ -272,18 +310,30 @@ function coerceContentEdit(raw: AiEditJson["contentEdit"], instruction: string):
     if (!spec.fields) spec.fields = ["faqs"];
     else if (!spec.fields.includes("faqs")) spec.fields.push("faqs");
   }
-  const scope = raw.scope === "page" ? "page" : raw.scope === "global" ? "global" : raw.query ? "page" : "global";
-  return { scope, query: raw.query ? String(raw.query).trim() : undefined, spec };
+  const rawQuery = raw.query ? String(raw.query).trim() : "";
+  // "this page" / "current" / an empty target all mean the page staged in the preview.
+  const pointsAtStaged = !rawQuery || /^(this|current|current page|this page|here)$/i.test(rawQuery);
+  let scope: ContentEdit["scope"] = raw.scope === "global" ? "global" : raw.scope === "page" ? "page" : rawQuery ? "page" : "global";
+  let query = rawQuery || undefined;
+  if (context.currentSlug && (rawQuery === CURRENT_PAGE_QUERY || (scope === "page" && pointsAtStaged))) {
+    scope = "page";
+    query = CURRENT_PAGE_QUERY;
+  } else if (query === CURRENT_PAGE_QUERY) {
+    // No staged page to resolve against — fall back to a site-wide edit.
+    scope = "global";
+    query = undefined;
+  }
+  return { scope, query, spec };
 }
 
-function coerceAiPatch(project: Project, json: AiEditJson, instruction: string): EditPatch {
+function coerceAiPatch(project: Project, json: AiEditJson, instruction: string, context: EditContext = {}): EditPatch {
   const patch: EditPatch = {};
   if (json.themeId && THEME_IDS.includes(json.themeId)) patch.themeId = json.themeId;
   if (json.shuffleLayout) patch.layoutSeed = (project.layoutSeed || 0) + 1;
   if (json.newHero) patch.variants = { ...patch.variants, hero: differentVariant(HERO_VARIANTS, project.variants?.hero) };
   if (json.newHeader) patch.variants = { ...patch.variants, header: differentVariant(HEADER_VARIANTS, project.variants?.header) };
   if (json.newFooter) patch.variants = { ...patch.variants, footer: differentVariant(FOOTER_VARIANTS, project.variants?.footer) };
-  const contentEdit = coerceContentEdit(json.contentEdit, instruction);
+  const contentEdit = coerceContentEdit(json.contentEdit, instruction, context);
   if (contentEdit) patch.contentEdit = contentEdit;
   const branding: Partial<Project["branding"]> = {};
   if (typeof json.accentColor === "string" && /^#?[0-9a-f]{3,8}$/i.test(json.accentColor)) {
@@ -300,11 +350,11 @@ function coerceAiPatch(project: Project, json: AiEditJson, instruction: string):
 }
 
 /** Interpret a chat instruction into a project patch. Uses GPT when configured. */
-export async function interpretEdit(project: Project, instruction: string): Promise<EditResult> {
-  if (!isAiEnabled()) return heuristicEdit(project, instruction);
+export async function interpretEdit(project: Project, instruction: string, context: EditContext = {}): Promise<EditResult> {
+  if (!isAiEnabled()) return heuristicEdit(project, instruction, context);
 
   const ai = getAiClient();
-  if (!ai) return heuristicEdit(project, instruction);
+  if (!ai) return heuristicEdit(project, instruction, context);
 
   try {
     const completion = await ai.chat.completions.create({
@@ -314,21 +364,28 @@ export async function interpretEdit(project: Project, instruction: string): Prom
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: `Current design: theme=${project.themeId}, accent=${project.branding.accentColor}, tagline="${project.branding.tagline}".\nUser request: "${instruction}"\nReturn a JSON object with any of: themeId, accentColor, tagline, brandName, phoneDisplay, shuffleLayout, newHero, newHeader, newFooter, contentEdit, reply.`,
+          content: [
+            `Current design: theme=${project.themeId}, accent=${project.branding.accentColor}, tagline="${project.branding.tagline}".`,
+            context.currentSlug
+              ? `Open in the preview: ${context.currentLabel || context.currentSlug} (${context.currentSlug}) — this is what the user can see right now.`
+              : `Open in the preview: nothing specific.`,
+            `User request: "${instruction}"`,
+            `Return a JSON object with any of: themeId, accentColor, tagline, brandName, phoneDisplay, shuffleLayout, newHero, newHeader, newFooter, contentEdit, reply.`,
+          ].join("\n"),
         },
       ],
     });
     const raw = completion.choices[0]?.message?.content || "{}";
     const json = JSON.parse(raw) as AiEditJson;
-    const patch = coerceAiPatch(project, json, instruction);
-    const reply = (json.reply && String(json.reply).trim()) || "Done — I applied that change and refreshed the preview.";
+    const patch = coerceAiPatch(project, json, instruction, context);
+    const reply = (json.reply && String(json.reply).trim()) || "Done — I applied that change to the staged site.";
     // If the model returned nothing actionable, fall back so the user still gets a real change when possible.
     if (Object.keys(patch).length === 0) {
-      const fallback = heuristicEdit(project, instruction);
+      const fallback = heuristicEdit(project, instruction, context);
       if (Object.keys(fallback.patch).length) return fallback;
     }
     return { patch, reply, source: "ai" };
   } catch {
-    return heuristicEdit(project, instruction);
+    return heuristicEdit(project, instruction, context);
   }
 }

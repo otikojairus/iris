@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { IconCheck, IconDesktop, IconLock, IconMobile, IconRefresh, IconSend, IconShuffle, IconSparkle, IconTablet } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { getTheme, THEMES } from "@/lib/generate/themes";
@@ -18,9 +18,49 @@ export function Workspace({ project }: { project: Project }) {
   const themeId = project.themeId || getTheme("slate").id;
   const [busy, setBusy] = useState(false);
   // Cache-busting token so the preview iframe reloads after edits.
-  const [rev, setRev] = useState(0);
+  const revRef = useRef(0);
   const generating = project.status === "generating";
   const theme = getTheme(themeId);
+
+  const siteSrc = useCallback(
+    (path: string, r: number) => `/sites/${project.id}${path === "/" ? "" : path}${r ? `?rev=${r}` : ""}`,
+    [project.id],
+  );
+
+  // The page staged in the preview. Chat edits with no named target apply to this page,
+  // and refreshes keep the user where they are instead of bouncing back to the homepage.
+  const [previewPath, setPreviewPath] = useState("/");
+  const pathRef = useRef("/");
+  const [frameSrc, setFrameSrc] = useState(() => siteSrc("/", 0));
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  const reloadPreview = useCallback(
+    (path?: string) => {
+      const target = path ?? pathRef.current;
+      pathRef.current = target;
+      setPreviewPath(target);
+      revRef.current += 1;
+      setFrameSrc(siteSrc(target, revRef.current));
+    },
+    [siteSrc],
+  );
+
+  // Same-origin iframe, so we can follow in-preview navigation and keep the URL bar and
+  // the chat's page context in sync with whatever the user clicked through to.
+  const syncPreviewPath = useCallback(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    try {
+      const pathname = frame.contentWindow?.location.pathname;
+      if (!pathname) return;
+      const prefix = `/sites/${project.id}`;
+      const next = (pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname).replace(/\/+$/, "") || "/";
+      pathRef.current = next;
+      setPreviewPath(next);
+    } catch {
+      // Cross-origin navigation — leave the last known path in place.
+    }
+  }, [project.id]);
 
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -44,11 +84,11 @@ export function Workspace({ project }: { project: Project }) {
   function cycleTheme() {
     const idx = THEMES.findIndex((t) => t.id === themeId);
     const next = THEMES[(idx + 1) % THEMES.length].id;
-    updateProject(project.id, { themeId: next }).then(() => setRev((r) => r + 1));
+    updateProject(project.id, { themeId: next }).then(() => reloadPreview());
   }
 
   function shuffleLayout() {
-    updateProject(project.id, { layoutSeed: (project.layoutSeed || 0) + 1 }).then(() => setRev((r) => r + 1));
+    updateProject(project.id, { layoutSeed: (project.layoutSeed || 0) + 1 }).then(() => reloadPreview());
   }
 
   async function send() {
@@ -66,19 +106,29 @@ export function Workspace({ project }: { project: Project }) {
       const res = await fetch(`/api/projects/${project.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        // The page on screen is the default target for edits that name no page.
+        body: JSON.stringify({ message: text, currentPath: pathRef.current }),
       });
       if (res.ok) {
-        const data = (await res.json()) as { message?: { content: string; event?: { label: string } } };
+        const data = (await res.json()) as {
+          message?: { content: string; event?: { label: string } };
+          changed?: string[];
+          designChanged?: boolean;
+        };
         addMessage(project.id, {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: data.message?.content || "Done — I applied that change and refreshed the preview.",
+          content: data.message?.content || "Done — I applied that change to the staged site.",
           createdAt: new Date().toISOString(),
           event: { stage: "ready", label: data.message?.event?.label || "Preview updated" },
         });
         await refresh();
-        setRev((r) => r + 1);
+        // Reload where the user is, unless the edit landed on a page they can't see —
+        // then take them to it so the change is actually visible.
+        const changed = data.changed || [];
+        const here = pathRef.current;
+        if (changed.length && !changed.includes(here) && changed.length <= 3) reloadPreview(changed[0]);
+        else reloadPreview();
       } else {
         addMessage(project.id, {
           id: `a-${Date.now()}`,
@@ -126,7 +176,13 @@ export function Workspace({ project }: { project: Project }) {
           <div className="iris-chat-box">
             <textarea
               rows={1}
-              placeholder={generating ? "Iris is generating your site…" : "Ask Iris to tweak copy, colors, sections…"}
+              placeholder={
+                generating
+                  ? "Iris is generating your site…"
+                  : previewPath === "/"
+                    ? "Ask Iris to tweak this page — copy, colors, sections…"
+                    : `Ask Iris to tweak ${previewPath} — copy, colors, sections…`
+              }
               value={draft}
               disabled={generating}
               onChange={(e) => setDraft(e.target.value)}
@@ -146,7 +202,7 @@ export function Workspace({ project }: { project: Project }) {
 
       <div className="iris-preview">
         <div className="iris-preview-bar">
-          <button className="iris-btn iris-btn-sm iris-btn-ghost" aria-label="Refresh" onClick={() => setRev((r) => r + 1)}>
+          <button className="iris-btn iris-btn-sm iris-btn-ghost" aria-label="Refresh" onClick={() => reloadPreview()}>
             <IconRefresh />
           </button>
           <button className="iris-btn iris-btn-sm iris-btn-ghost" onClick={cycleTheme} aria-label="Cycle theme" title={`Theme: ${theme.label} — click to change`}>
@@ -161,10 +217,20 @@ export function Workspace({ project }: { project: Project }) {
             <IconCheck style={{ width: 14, height: 14 }} />
             <span>SEO</span>
           </button>
-          <div className="iris-url">
+          <div className="iris-url" title={previewPath === "/" ? "Homepage" : previewPath}>
             <IconLock style={{ width: 13, height: 13 }} />
             {project.branding.domain}
+            {previewPath !== "/" && <span style={{ opacity: 0.7 }}>{previewPath}</span>}
           </div>
+          {previewPath !== "/" && (
+            <button
+              className="iris-btn iris-btn-sm iris-btn-ghost"
+              onClick={() => reloadPreview("/")}
+              title="Back to the homepage"
+            >
+              Home
+            </button>
+          )}
           <div className="iris-seg">
             <button data-active={device === "desktop"} onClick={() => setDevice("desktop")} aria-label="Desktop">
               <IconDesktop />
@@ -255,11 +321,11 @@ export function Workspace({ project }: { project: Project }) {
           ) : (
             <div className="iris-device" data-device={device}>
               <iframe
-                key={rev}
+                ref={frameRef}
                 title={`${project.name} preview`}
-                src={`/sites/${project.id}?rev=${rev}`}
+                src={frameSrc}
                 className="iris-preview-iframe"
-                loading="lazy"
+                onLoad={syncPreviewPath}
               />
             </div>
           )}

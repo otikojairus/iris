@@ -170,6 +170,39 @@ ${opts.header}
 ${opts.body}
 </main>
 ${opts.footer}
+<script>
+(() => {
+  const drawer = document.querySelector("[data-site-drawer]");
+  const opener = document.querySelector("[data-menu-open]");
+  const mobileCall = document.querySelector("[data-mobile-call]");
+  if (!drawer || !opener) return;
+
+  const setOpen = (open) => {
+    drawer.classList.toggle("${theme.prefix}-drawer-open", open);
+    drawer.setAttribute("aria-hidden", String(!open));
+    opener.setAttribute("aria-expanded", String(open));
+    opener.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    document.body.style.overflow = open ? "hidden" : "";
+  };
+
+  opener.addEventListener("click", () => setOpen(opener.getAttribute("aria-expanded") !== "true"));
+  drawer.querySelectorAll("[data-menu-close], a").forEach((element) => {
+    element.addEventListener("click", () => setOpen(false));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setOpen(false);
+  });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 1020) setOpen(false);
+  });
+  const updateCall = () => {
+    if (mobileCall) mobileCall.classList.toggle("${theme.prefix}-mobile-call-show", window.innerWidth <= 720 && window.scrollY > 280);
+  };
+  window.addEventListener("scroll", updateCall, { passive: true });
+  window.addEventListener("resize", updateCall);
+  updateCall();
+})();
+</script>
 </body>
 </html>`;
 }

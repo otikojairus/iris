@@ -1,10 +1,10 @@
 // Iris variant library — a LARGE local set of prebuilt, deterministic visual templates.
 //
 // Four families the seeded composer shuffles through:
-//   HERO    (15)  — hero section layouts
-//   SECTION (15)  — content/section archetypes (grids, rows, stats, comparison, …)
-//   HEADER  (15)  — navbar layouts
-//   FOOTER  (15)  — footer layouts
+//   HERO    (18)  — hero section layouts
+//   SECTION (35)  — 15 large archetypes + 20 compact composition pieces
+//   HEADER  (18)  — navbar layouts
+//   FOOTER  (18)  — footer layouts
 //
 // Every variant is CONTENT-AGNOSTIC: it receives already-written copy (from the AI
 // PageContent, or template fallback) and structure, and renders layout only. Themes stay
@@ -21,7 +21,7 @@ import { IMAGE_POOL } from "./templates-app";
 import type { Branding } from "./generator";
 import type { CityFact, ContentSection, FaqItem, SeoPage } from "@/lib/types";
 
-export const HERO_VARIANTS = Array.from({ length: 15 }, (_, i) => `hero-${i + 1}`);
+export const HERO_VARIANTS = Array.from({ length: 18 }, (_, i) => `hero-${i + 1}`);
 export const SECTION_VARIANTS = [
   "services-grid",
   "services-rows",
@@ -38,9 +38,29 @@ export const SECTION_VARIANTS = [
   "alert-strip",
   "logos-strip",
   "related-links",
+  "availability-bar",
+  "trust-score",
+  "license-strip",
+  "price-promise",
+  "response-window",
+  "service-match",
+  "audience-chips",
+  "project-sizes",
+  "team-note",
+  "workmanship-promise",
+  "photo-proof",
+  "booking-steps",
+  "contact-options",
+  "hours-card",
+  "local-note",
+  "equipment-strip",
+  "aftercare-note",
+  "quote-checklist",
+  "mini-case-study",
+  "quick-links",
 ];
-export const HEADER_VARIANTS = Array.from({ length: 15 }, (_, i) => `hdr-${i + 1}`);
-export const FOOTER_VARIANTS = Array.from({ length: 15 }, (_, i) => `ftr-${i + 1}`);
+export const HEADER_VARIANTS = Array.from({ length: 18 }, (_, i) => `hdr-${i + 1}`);
+export const FOOTER_VARIANTS = Array.from({ length: 18 }, (_, i) => `ftr-${i + 1}`);
 
 export type VCtx = {
   p: string;
@@ -96,7 +116,31 @@ const INTERIOR_HEROES = ["hero-4", "hero-13", "hero-12", "hero-6", "hero-11"];
 /** Optional homepage section archetypes the composer shuffles through.
  * Note: deliberately no "stat-band" — homepages should read as natural, user-centered
  * copy rather than pSEO-style statistics (page counts, "cities served", etc.). */
-const OPTIONAL_HOME_SECTIONS = ["feature", "comparison", "testimonial", "logos-strip"];
+const OPTIONAL_HOME_SECTIONS = ["feature", "comparison", "testimonial"];
+/** Compact, self-contained pieces. A seeded subset is woven between the larger
+ * homepage sections so generated sites do not share one recognizable skeleton. */
+export const MICRO_HOME_SECTIONS = [
+  "availability-bar",
+  "trust-score",
+  "license-strip",
+  "price-promise",
+  "response-window",
+  "service-match",
+  "audience-chips",
+  "project-sizes",
+  "team-note",
+  "workmanship-promise",
+  "photo-proof",
+  "booking-steps",
+  "contact-options",
+  "hours-card",
+  "local-note",
+  "equipment-strip",
+  "aftercare-note",
+  "quote-checklist",
+  "mini-case-study",
+  "quick-links",
+] as const;
 const FAQ_VARIANTS = ["faq-grid", "faq-accordion"];
 
 export type VariantPlan = {
@@ -121,9 +165,23 @@ export function planVariants(
 
   const servicesStyle = rng() < 0.5 ? "services-grid" : "services-rows";
   const optional = shuffleWith(rng, OPTIONAL_HOME_SECTIONS).slice(0, 2 + Math.floor(rng() * 2));
+  const micro = shuffleWith(rng, [...MICRO_HOME_SECTIONS]).slice(0, 3 + Math.floor(rng() * 3));
 
-  // Baseline order with optional archetypes interleaved after services.
-  const ids = ["logos-strip", servicesStyle, ...optional, "coverage-tiles", faq, "cta-band"];
+  // Split compact pieces across the page instead of appending a recognizable block.
+  // The seed keeps the result stable for a project while layoutSeed reshuffles it.
+  const firstBreak = 1 + Math.floor(rng() * 2);
+  const secondBreak = Math.min(micro.length, firstBreak + 1 + Math.floor(rng() * 2));
+  const ids = [
+    "logos-strip",
+    ...micro.slice(0, firstBreak),
+    servicesStyle,
+    ...micro.slice(firstBreak, secondBreak),
+    ...optional,
+    ...micro.slice(secondBreak),
+    "coverage-tiles",
+    faq,
+    "cta-band",
+  ];
 
   // Assign alternating-ish bands, avoiding two darks in a row. Call-to-action and
   // alert strips default to dark, but flip to soft if the previous band was already
@@ -134,7 +192,7 @@ export function planVariants(
     let band: "soft" | "dark" = "soft";
     if (id === "cta-band" || id === "alert-strip") {
       band = lastDark ? "soft" : "dark";
-    } else if (id === "logos-strip") {
+    } else if (id === "logos-strip" || MICRO_HOME_SECTIONS.includes(id as (typeof MICRO_HOME_SECTIONS)[number])) {
       band = "soft";
     } else {
       band = !lastDark && rng() < 0.32 ? "dark" : "soft";
@@ -236,7 +294,7 @@ function heroChecklist(ctx: VCtx, c: HeroContent): string {
 
 /** Render one hero variant. */
 export function renderHero(ctx: VCtx, id: string, c: HeroContent): string {
-  const { p } = ctx;
+  const { p, b } = ctx;
   const n = Number(id.replace("hero-", "")) || 1;
   const wrap = (inner: string, mod = "", attr = "") => `<section class="${p}-hero v-hero v-hero-${n} ${mod}" ${attr}>${inner}</section>`;
 
@@ -347,13 +405,46 @@ export function renderHero(ctx: VCtx, id: string, c: HeroContent): string {
         "v-hero-two",
       );
     case 15: // angled accent bar
-    default:
       return wrap(
         `<div class="v-hero-angle"></div><div class="${p}-wrap ${p}-hero-content">${heroCopy(ctx, c)}<div class="${p}-hero-stage">${heroPanel(
           ctx,
           c,
         )}</div></div>`,
         "v-hero-angled",
+      );
+    case 16: // engineering blueprint + field documentation frame
+      return wrap(
+        `<div class="v-premium-gridlines" aria-hidden="true"></div><div class="${p}-wrap v-hero-blueprint-layout">${heroCopy(
+          ctx,
+          c,
+        )}<div class="v-field-frame"><img src="${c.image}" alt="${esc(c.imageAlt)}" loading="eager" /><div class="v-field-tag"><span>FIELD / 001</span><b>${esc(
+          c.kicker,
+        )}</b></div><div class="v-depth-card"><span>GROUND LEVEL</span><i></i><strong>READY</strong><small>CREW STATUS</small></div></div></div><div class="v-bore-strip" aria-hidden="true"><i></i><i></i><i></i></div>`,
+        "v-hero-blueprint",
+      );
+    case 17: // night-shift rain + pure CSS clock
+      return wrap(
+        `<div class="v-rain" aria-hidden="true"></div><div class="${p}-wrap v-hero-night-layout">${heroCopy(
+          ctx,
+          c,
+        )}<div class="v-night-stage"><div class="v-night-frame"><img src="${c.image}" alt="${esc(
+          c.imageAlt,
+        )}" loading="eager" /></div><div class="v-clock" aria-hidden="true"><span></span><em></em><b>24H</b></div></div></div>`,
+        "v-hero-night",
+      );
+    case 18: // warm editorial stage + overlapping work ticket
+    default:
+      return wrap(
+        `<div class="v-dot-atmosphere" aria-hidden="true"></div><div class="${p}-wrap v-hero-editorial-layout">${heroCopy(
+          ctx,
+          c,
+        )}<div class="v-editorial-stage"><img src="${c.image}" alt="${esc(c.imageAlt)}" loading="eager" /><aside class="v-work-ticket"><span>JOB / OPEN</span><strong>${esc(
+          b.brandName,
+        )}</strong>${c.bullets
+          .slice(0, 3)
+          .map((item, i) => `<p><b>0${i + 1}</b><em>${esc(item)}</em></p>`)
+          .join("")}</aside></div></div>`,
+        "v-hero-editorial",
       );
   }
 }
@@ -751,13 +842,80 @@ function renderCoverage(ctx: VCtx, style: number, head: string, p: string, bc: s
   }
 }
 
+/* -------------------------- compact composition pieces -------------------------- */
+
+function renderMicroSection(ctx: VCtx, id: string): string {
+  const { p, b, structure } = ctx;
+  const services = structure.pillars.slice(0, 4);
+  const cities = structure.uniqueCities.slice(0, 4);
+  const phone = `<a class="${p}-call" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>`;
+  const serviceLinks = services
+    .map((page) => `<a href="${ctx.link(page.pageSlug)}">${esc(serviceShortLabel(page))}</a>`)
+    .join("");
+  const cityLinks = cities
+    .map((page) => `<a href="${ctx.link(page.pageSlug)}">${esc(linkLabel(page))}</a>`)
+    .join("");
+  const wrap = (inner: string, modifier = "") =>
+    `<section class="${p}-section ${p}-section-soft v-sec v-micro v-micro-${id} ${modifier}"><div class="${p}-wrap">${inner}</div></section>`;
+
+  switch (id) {
+    case "availability-bar":
+      return wrap(`<div class="v-micro-bar"><span class="v-micro-live"><i></i>Taking bookings now</span><strong>Talk to a real person today</strong>${phone}</div>`);
+    case "trust-score":
+      return wrap(`<div class="v-micro-score"><div><span class="v-micro-stars">★★★★★</span><strong>Recommended by local customers</strong></div><p>Clear quotes · Careful work · Reliable arrival times</p></div>`);
+    case "license-strip":
+      return wrap(`<div class="v-micro-badges"><span>✓ Licensed &amp; insured</span><span>✓ Safety-first crews</span><span>✓ Clear job records</span><span>✓ Local coverage</span></div>`);
+    case "price-promise":
+      return wrap(`<div class="v-micro-split"><span class="v-micro-index">01</span><div><p class="${p}-eyebrow">Our price promise</p><h2>No surprises when the invoice arrives.</h2></div><p>We agree the scope and price before work starts. If the job changes, you hear it from us first.</p></div>`);
+    case "response-window":
+      return wrap(`<div class="v-micro-window"><div><span>Response window</span><strong>Same-day answers</strong></div><div><span>Booking</span><strong>A time you can plan around</strong></div>${phone}</div>`);
+    case "service-match":
+      return wrap(`<div class="v-micro-match"><div><p class="${p}-eyebrow">Not sure what to book?</p><h2>Start with what you can see.</h2><p>Tell us what is happening and we will match the right crew.</p></div><div class="v-micro-linkgrid">${serviceLinks || `<a href="${ctx.servicesHref}">Browse all services</a>`}</div></div>`);
+    case "audience-chips":
+      return wrap(`<div class="v-micro-centered"><p class="${p}-eyebrow">Built around your site</p><div class="v-micro-chips"><span>Homeowners</span><span>Property managers</span><span>Facilities teams</span><span>Local businesses</span></div></div>`);
+    case "project-sizes":
+      return wrap(`<div class="v-micro-scale"><span>One-off repair</span><i></i><span>Planned project</span><i></i><span>Multi-site support</span><strong>One crew, any scale.</strong></div>`);
+    case "team-note":
+      return wrap(`<div class="v-micro-note"><span class="v-micro-avatar">${esc(b.brandName.slice(0, 1).toUpperCase())}</span><blockquote>“You will speak with someone who understands the work — not a call centre reading from a script.”</blockquote><strong>The ${esc(b.brandName)} team</strong></div>`);
+    case "workmanship-promise":
+      return wrap(`<div class="v-micro-promise"><span aria-hidden="true">✓</span><div><p class="${p}-eyebrow">Workmanship promise</p><h2>Done properly. Left tidy. Explained clearly.</h2></div><a class="${p}-secondary" href="${ctx.servicesHref}">See how we work →</a></div>`);
+    case "photo-proof":
+      return wrap(`<div class="v-micro-photo"><img src="${ctx.img(`${b.domain}:proof`)}" alt="${esc(b.brandName)} completed work" loading="lazy" /><div><p class="${p}-eyebrow">Proof, not promises</p><h2>We document the work before we leave.</h2><p>Useful photos and clear notes for your records, landlord, team, or insurer.</p></div></div>`);
+    case "booking-steps":
+      return wrap(`<ol class="v-micro-steps"><li><span>1</span><strong>Tell us what is happening</strong></li><li><span>2</span><strong>Get a clear plan and price</strong></li><li><span>3</span><strong>Choose a time that works</strong></li></ol>`);
+    case "contact-options":
+      return wrap(`<div class="v-micro-contact"><div><p class="${p}-eyebrow">A simple first step</p><h2>Call now or explore your options.</h2></div><div class="${p}-actions">${phone}<a class="${p}-secondary" href="${ctx.servicesHref}">Browse services</a></div></div>`);
+    case "hours-card":
+      return wrap(`<div class="v-micro-hours"><div><span>MON–FRI</span><strong>7:00–19:00</strong></div><div><span>WEEKENDS</span><strong>On-call support</strong></div><div><span>URGENT</span><strong>${esc(b.phoneDisplay)}</strong></div></div>`);
+    case "local-note":
+      return wrap(`<div class="v-micro-local"><span class="v-micro-pin" aria-hidden="true"></span><div><p class="${p}-eyebrow">Close enough to be useful</p><h2>${cities.length ? `Working across ${cities.length}+ local service areas.` : "Local crews, practical arrival times."}</h2></div><div class="v-micro-citylinks">${cityLinks || `<a href="${ctx.servicesHref}">View coverage</a>`}</div></div>`);
+    case "equipment-strip":
+      return wrap(`<div class="v-micro-equipment"><strong>Ready for the job</strong><span>Specialist tools</span><span>Site-safe equipment</span><span>Clean-up included</span><span>Job notes supplied</span></div>`);
+    case "aftercare-note":
+      return wrap(`<div class="v-micro-after"><span>After the work</span><h2>You are not left guessing.</h2><p>We explain what was done, what to watch for, and when — if ever — you should follow up.</p></div>`);
+    case "quote-checklist":
+      return wrap(`<div class="v-micro-quote"><div><p class="${p}-eyebrow">What your quote includes</p><h2>A useful number, not a vague estimate.</h2></div><ul><li>✓ Clear scope</li><li>✓ Labour and materials</li><li>✓ Realistic timing</li><li>✓ No hidden add-ons</li></ul></div>`);
+    case "mini-case-study":
+      return wrap(`<article class="v-micro-case"><span>Recent job</span><div><h2>From first call to finished work, without the runaround.</h2><p>We assessed the site, agreed the plan, completed the work, and sent the record the same day.</p></div><strong>01 day<br /><small>typical turnaround</small></strong></article>`);
+    case "quick-links":
+      return wrap(`<nav class="v-micro-quick" aria-label="Popular services"><strong>Popular right now</strong>${serviceLinks || `<a href="${ctx.servicesHref}">All services</a>`}<a href="${ctx.servicesHref}">View all →</a></nav>`);
+    default:
+      return "";
+  }
+}
+
 /** Render one section-archetype variant. */
 export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {}): string {
   const { p, b, structure } = ctx;
   const bc = bandClass(p, payload.band);
-  const head = `${eyebrow(p, payload.eyebrow)}${heading(payload.heading)}${payload.blurb ? `<p class="v-sec-blurb">${esc(payload.blurb)}</p>` : ""}`;
+  const headContent = `${eyebrow(p, payload.eyebrow)}${heading(payload.heading)}${payload.blurb ? `<p class="v-sec-blurb">${esc(payload.blurb)}</p>` : ""}`;
+  const head = headContent ? `<header class="v-section-head">${headContent}</header>` : "";
   const wrap = (inner: string) => `<section class="${p}-section${bc} v-sec v-sec-${id}"><div class="${p}-wrap">${head}${inner}</div></section>`;
   const seed = payload.styleSeed || b.brandName || b.domain;
+
+  if (MICRO_HOME_SECTIONS.includes(id as (typeof MICRO_HOME_SECTIONS)[number])) {
+    return renderMicroSection(ctx, id);
+  }
 
   switch (id) {
     case "services-grid":
@@ -889,7 +1047,7 @@ export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {
 }
 
 /* ========================================================================== */
-/* HEADER FAMILY (15)                                                          */
+/* HEADER FAMILY (18)                                                          */
 /* ========================================================================== */
 
 export type NavLink = { href: string; label: string };
@@ -905,12 +1063,28 @@ export function renderHeader(ctx: VCtx, id: string, opts: { logo: string; nav: N
       extra ? `<a href="${ctx.servicesHref}">Services</a>` : ""
     }</nav>`;
   const call = (cls = `${p}-call ${p}-call-desktop`) => `<a class="${cls}" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a>`;
+  const menu = `<button class="${p}-menu" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="${p}-mobile-nav" data-menu-open><span aria-hidden="true"></span></button>`;
   const topbar = `<div class="v-topbar"><div class="${p}-wrap v-topbar-in"><span>${esc(b.tagline)}</span><a href="tel:${esc(
     b.phoneE164,
   )}">${esc(b.phoneDisplay)}</a></div></div>`;
+  const mobile = `<div class="${p}-drawer" id="${p}-mobile-nav" aria-hidden="true" data-site-drawer>
+    <button class="${p}-drawer-shade" type="button" aria-label="Close menu" data-menu-close></button>
+    <aside class="${p}-drawer-panel" aria-label="Mobile navigation">
+      <div class="v-drawer-head">${brand}<button class="v-drawer-close" type="button" aria-label="Close menu" data-menu-close><span></span></button></div>
+      <p class="v-drawer-label">Explore / ${esc(b.brandName)}</p>
+      <nav class="${p}-drawer-links">
+        <a href="${ctx.homeHref}"><span>01</span>Home</a>
+        <a href="${ctx.servicesHref}"><span>02</span>All services</a>
+        ${opts.nav.map((l, i) => `<a href="${l.href}"><span>${String(i + 3).padStart(2, "0")}</span>${esc(l.label)}</a>`).join("")}
+      </nav>
+      <div class="v-drawer-foot"><p>${esc(b.tagline)}</p><a class="${p}-call" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a></div>
+    </aside>
+  </div><div class="${p}-mobile-call" data-mobile-call><a class="${p}-call" href="tel:${esc(b.phoneE164)}">Call ${esc(
+    b.phoneDisplay,
+  )}</a></div>`;
 
   const shell = (inner: string, mod = "", pre = "") =>
-    `${pre}<header class="${p}-header v-hdr v-hdr-${n} ${mod}"><div class="${p}-wrap ${p}-nav">${inner}</div></header>`;
+    `${pre}<header class="${p}-header v-hdr v-hdr-${n} ${mod}"><div class="${p}-wrap ${p}-nav">${inner}${menu}</div></header>${mobile}`;
 
   switch (n) {
     case 1: // classic: logo left, nav, call right
@@ -942,13 +1116,32 @@ export function renderHeader(ctx: VCtx, id: string, opts: { logo: string; nav: N
     case 14: // accent bar under header
       return shell(`${brand}${links()}${call()}`, "v-hdr-accentbar");
     case 15: // split: nav left of center, call pinned
-    default:
       return shell(`${brand}${links()}${call()}`, "v-hdr-split");
+    case 16: // engineering ledger with signal utility bar
+      return shell(
+        `<span class="v-hdr-index">SITE / 01</span>${brand}${links()}${call()}`,
+        "v-hdr-engineering",
+        `<div class="v-hdr-signal"><div class="${p}-wrap"><span>Local crews / clear scope / direct contact</span><a href="tel:${esc(
+          b.phoneE164,
+        )}">OPEN LINE · ${esc(b.phoneDisplay)}</a></div></div>`,
+      );
+    case 17: // night dispatch board
+      return shell(
+        `${brand}<span class="v-hdr-status"><i></i>Now taking calls</span>${links()}${call()}`,
+        "v-hdr-dispatch",
+      );
+    case 18: // warm editorial frame
+    default:
+      return shell(
+        `${brand}<div class="v-hdr-editorial-nav">${links()}<a class="v-hdr-arrow" href="${ctx.servicesHref}">Explore ↗</a></div>${call()}`,
+        "v-hdr-editorial",
+        topbar,
+      );
   }
 }
 
 /* ========================================================================== */
-/* FOOTER FAMILY (15)                                                          */
+/* FOOTER FAMILY (18)                                                          */
 /* ========================================================================== */
 
 export function renderFooter(
@@ -1011,8 +1204,31 @@ export function renderFooter(
     case 14: // newsletter-ish row + columns
       return shell(`${grid("v-fcols-3")}${brandCol}${svcCol}<div><h2>Get a quote</h2><p class="${p}-footer-copy">Call and we will give you a real arrival window.</p><a class="${p}-call ${p}-footer-call" href="tel:${esc(b.phoneE164)}">Call ${esc(b.phoneDisplay)}</a></div></div>`, "v-ftr-news");
     case 15: // columns with big brand block
-    default:
       return shell(`${grid("v-fcols-4")}${brandCol}${svcCol}${cityCol || contactCol}${contactCol}</div>`, "v-ftr-brandblock");
+    case 16: // blueprint footer with indexed cells
+      return shell(
+        `<div class="${p}-wrap v-ftr-blueprint"><div class="v-ftr-blue-brand"><span>FIELD NOTES / ${year}</span><strong>${esc(
+          b.brandName,
+        )}</strong><p>${esc(b.tagline)}</p></div><div class="v-ftr-blue-cell"><span>01 / SERVICES</span><nav class="${p}-footer-links">${svc}</nav></div><div class="v-ftr-blue-cell"><span>02 / COVERAGE</span><nav class="${p}-footer-links">${cities || `<a href="${ctx.servicesHref}">View service area</a>`}</nav></div><div class="v-ftr-blue-cell"><span>03 / CALL</span><a class="v-ftr-blue-phone" href="tel:${esc(
+          b.phoneE164,
+        )}">${esc(b.phoneDisplay)}</a></div></div>`,
+        "v-ftr-blue",
+      );
+    case 17: // hazard lead + dispatch ledger
+      return shell(
+        `<div class="v-ftr-hazard"><div class="${p}-wrap"><span>READY WHEN YOU ARE</span><h2>Tell us what needs doing.</h2><a href="tel:${esc(
+          b.phoneE164,
+        )}">Call ${esc(b.phoneDisplay)} ↗</a></div></div>${grid("v-fcols-3")}${brandCol}${svcCol}${cityCol || contactCol}</div>`,
+        "v-ftr-dispatch",
+      );
+    case 18: // editorial oversized brand close
+    default:
+      return shell(
+        `<div class="${p}-wrap v-ftr-editorial"><div class="v-ftr-editorial-lead"><p>Good work starts with a straight conversation.</p><a class="${p}-call ${p}-call-large" href="tel:${esc(
+          b.phoneE164,
+        )}">Call ${esc(b.phoneDisplay)}</a></div><div class="v-ftr-wordmark">${esc(b.brandName)}</div><div class="v-ftr-editorial-links">${svcCol}${contactCol}</div></div>`,
+        "v-ftr-editorial-shell",
+      );
   }
 }
 
@@ -1039,7 +1255,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hero-boxed .v-hero-box .${p}-actions, .v-hero-boxed .v-hero-box .${p}-hero-status { justify-content: center; }
 
 /* Hero: gradient panel (9) */
-.v-hero-grad { position: relative; z-index: 2; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2.4rem; align-items: center; padding: 3.6rem 1.25rem; }
+.v-hero-gradient { position: relative; z-index: 2; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2.4rem; align-items: center; padding: 3.6rem 1.25rem; }
 .v-hero-gradient-copy { background: linear-gradient(150deg, var(--${p}-primary), var(--${p}-primary-deep)); color: #fff; padding: 2.4rem; border-radius: ${radiusCard}px; }
 .v-hero-gradient-copy h1, .v-hero-gradient-copy .v-hero-h1 { color: #fff; }
 .v-hero-gradient-copy .${p}-hero-lede { color: rgba(255,255,255,0.86); }
@@ -1071,6 +1287,49 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 
 /* Hero: angled (15) */
 .v-hero-angled .v-hero-angle { position: absolute; inset: 0; background: linear-gradient(120deg, color-mix(in srgb, var(--${p}-primary) 12%, transparent), transparent 46%); pointer-events: none; }
+
+/* Hero: engineering blueprint (16) */
+.v-hero-blueprint { min-height: 680px; background: var(--${p}-dark); color: var(--${p}-dark-text); overflow: hidden; }
+.v-premium-gridlines { position: absolute; inset: 0; opacity: 0.12; background-image: linear-gradient(rgba(255,255,255,0.75) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.75) 1px, transparent 1px); background-size: 78px 78px; }
+.v-hero-blueprint-layout, .v-hero-night-layout, .v-hero-editorial-layout { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 0.95fr; gap: clamp(2rem, 5vw, 5rem); align-items: center; min-height: 680px; padding-block: 4.5rem; }
+.v-hero-blueprint h1, .v-hero-blueprint .v-hero-h1, .v-hero-night h1, .v-hero-night .v-hero-h1 { color: var(--${p}-dark-text); font-size: clamp(2.8rem, 6vw, 5.8rem); line-height: 0.94; letter-spacing: -0.055em; }
+.v-hero-blueprint .${p}-hero-lede, .v-hero-night .${p}-hero-lede { color: var(--${p}-dark-muted); }
+.v-hero-blueprint .${p}-kicker, .v-hero-blueprint .${p}-hero-status li, .v-hero-night .${p}-kicker, .v-hero-night .${p}-hero-status li { color: var(--${p}-accent); }
+.v-field-frame { position: relative; min-height: 520px; border: 1px solid rgba(255,255,255,0.35); }
+.v-field-frame::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 48%, rgba(0,0,0,0.7)); pointer-events: none; }
+.v-field-frame img { width: 100%; height: 520px; object-fit: cover; filter: grayscale(1) contrast(1.08); }
+.v-field-tag { position: absolute; left: 0; bottom: 0; z-index: 2; max-width: 72%; display: grid; gap: 0.25rem; padding: 1rem 1.2rem; background: var(--${p}-accent); color: var(--${p}-dark); }
+.v-field-tag span, .v-depth-card span, .v-depth-card small { font-family: ${mono}; font-size: 0.62rem; letter-spacing: 0.09em; }
+.v-depth-card { position: absolute; z-index: 3; right: -22px; top: 62px; width: 132px; padding: 0.9rem; background: var(--${p}-primary); color: #fff; box-shadow: -9px 9px 0 var(--${p}-accent); }
+.v-depth-card i { display: block; height: 90px; margin: 0.55rem 50% 0.55rem 0; border-right: 1px dashed rgba(255,255,255,0.75); }
+.v-depth-card strong, .v-depth-card small { display: block; }
+.v-bore-strip { position: absolute; left: -4%; right: -4%; bottom: 30px; display: flex; gap: 5rem; transform: rotate(-1deg); opacity: 0.55; }
+.v-bore-strip i { flex: 1; height: 16px; border: 2px solid var(--${p}-accent); border-radius: 50%; }
+
+/* Hero: night dispatch (17) */
+.v-hero-night { min-height: 650px; background: linear-gradient(145deg, var(--${p}-dark), color-mix(in srgb, var(--${p}-primary-deep) 36%, var(--${p}-dark))); color: var(--${p}-dark-text); overflow: hidden; }
+.v-rain { position: absolute; inset: 0; opacity: 0.22; background: repeating-linear-gradient(-18deg, transparent 0 15px, color-mix(in srgb, var(--${p}-accent) 50%, transparent) 15px 16px); }
+.v-night-stage { position: relative; }
+.v-night-frame { height: 480px; outline: 3px solid var(--${p}-accent); outline-offset: -3px; overflow: hidden; }
+.v-night-frame img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.7) contrast(1.08); }
+.v-clock { position: absolute; right: 18px; bottom: 18px; width: 108px; height: 108px; display: grid; place-items: center; border: 3px solid var(--${p}-accent); border-radius: 50%; background: radial-gradient(circle, var(--${p}-dark) 0 58%, transparent 59%), var(--${p}-primary); color: var(--${p}-accent); box-shadow: 0 0 0 8px rgba(0,0,0,0.35); }
+.v-clock span, .v-clock em { position: absolute; left: calc(50% - 2px); bottom: 50%; width: 4px; transform-origin: 50% 100%; background: var(--${p}-accent); }
+.v-clock span { height: 32px; transform: rotate(18deg); }
+.v-clock em { height: 24px; transform: rotate(128deg); }
+.v-clock b { align-self: end; margin-bottom: 14px; font-family: ${mono}; font-size: 0.68rem; letter-spacing: 0.08em; }
+
+/* Hero: warm editorial logistics (18) */
+.v-hero-editorial { min-height: 680px; overflow: hidden; background: radial-gradient(circle at 84% 14%, var(--${p}-primary-soft), transparent 30%), var(--${p}-bg); }
+.v-dot-atmosphere { position: absolute; inset: 0; opacity: 0.5; background-image: radial-gradient(color-mix(in srgb, var(--${p}-ink) 12%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
+.v-hero-editorial h1, .v-hero-editorial .v-hero-h1 { font-size: clamp(2.8rem, 6vw, 5.6rem); line-height: 0.95; letter-spacing: -0.055em; }
+.v-editorial-stage { position: relative; min-height: 520px; }
+.v-editorial-stage > img { width: 100%; height: 520px; object-fit: cover; border-radius: 30px 30px 92px 30px; box-shadow: var(--${p}-shadow-lift); }
+.v-work-ticket { position: absolute; left: -28px; bottom: 28px; width: min(300px, calc(100% - 2rem)); padding: 1.2rem; border-radius: 18px; border-top: 5px solid var(--${p}-accent); background: var(--${p}-dark); color: var(--${p}-dark-text); box-shadow: var(--${p}-shadow-lift); }
+.v-work-ticket > span { font-family: ${mono}; font-size: 0.68rem; letter-spacing: 0.12em; color: var(--${p}-accent); }
+.v-work-ticket > strong { display: block; margin: 0.4rem 0 0.8rem; font-family: ${display}; font-size: 1.2rem; }
+.v-work-ticket p { display: grid; grid-template-columns: 32px 1fr; gap: 0.65rem; margin: 0; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.13); color: var(--${p}-dark-muted); }
+.v-work-ticket p b { color: var(--${p}-accent); font-family: ${mono}; }
+.v-work-ticket p em { font-style: normal; }
 
 /* Section: services rows */
 .v-rows { display: grid; gap: 0.9rem; }
@@ -1122,8 +1381,11 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-acc-item > p { margin: 0 0 1.1rem; color: var(--${p}-ink-soft); }
 
 /* Section: logos strip */
-.v-logos { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1rem 2.4rem; }
-.v-logo { font-family: ${display}; font-weight: 700; letter-spacing: 0.04em; color: var(--${p}-muted); opacity: 0.85; text-transform: uppercase; font-size: 0.9rem; }
+.v-sec-logos { padding-block: 0; border-block: 1px solid var(--${p}-ink); background: var(--${p}-primary-soft); }
+.v-sec-logos .v-logos { display: grid; grid-template-columns: repeat(5, 1fr); align-items: stretch; padding-inline: 1.25rem; }
+.v-logo { min-height: 82px; display: flex; align-items: center; justify-content: center; padding: 0.8rem; border-right: 1px solid color-mix(in srgb, var(--${p}-ink) 28%, transparent); font-family: ${mono}; font-weight: 700; letter-spacing: 0.07em; color: var(--${p}-ink); text-align: center; text-transform: uppercase; font-size: 0.7rem; }
+.v-logo:first-child { border-left: 1px solid color-mix(in srgb, var(--${p}-ink) 28%, transparent); }
+.v-logo::before { content: "◆"; margin-right: 0.65rem; color: var(--${p}-primary); font-size: 0.55rem; }
 
 /* Header variants */
 .v-spacer { flex: 1; }
@@ -1158,6 +1420,85 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hdr-pill .v-pill { margin-left: auto; }
 .v-hdr-minimal .v-spacer { margin: 0; }
 
+/* Give every desktop header a recognisable composition, not merely a reordered row. */
+.v-hdr-1 .${p}-nav { min-height: 82px; }
+.v-hdr-1 .${p}-brand { padding-right: 1.4rem; border-right: 1px solid var(--${p}-line-strong); }
+.v-hdr-2 { border-bottom: 0; box-shadow: var(--${p}-shadow); }
+.v-hdr-2 .v-hdr-center { min-height: 92px; }
+.v-hdr-2 .${p}-brand-name { font-size: 1.45rem; }
+.v-hdr-3 { background: var(--${p}-dark); border-bottom: 4px solid var(--${p}-accent); }
+.v-hdr-3 .${p}-brand-name, .v-hdr-3 .${p}-links a { color: var(--${p}-dark-text); }
+.v-hdr-3 .${p}-links a:hover { color: var(--${p}-accent); }
+.v-hdr-3 .${p}-brand { padding-left: 1rem; border-left: 1px solid rgba(255,255,255,0.22); }
+.v-hdr-4 .v-topbar { border-bottom: 1px solid rgba(255,255,255,0.12); }
+.v-hdr-4 .${p}-nav { min-height: 76px; }
+.v-hdr-5 { border-bottom: 0; }
+.v-hdr-5 .${p}-nav { min-height: 88px; }
+.v-hdr-5 .${p}-brand-name { font-size: clamp(1.3rem, 2vw, 1.75rem); }
+.v-hdr-6 { border-bottom: 0; background: transparent; backdrop-filter: none; }
+.v-hdr-6 .${p}-nav { min-height: 86px; margin-top: 0.5rem; padding: 0.45rem 0.55rem 0.45rem 1rem; border: 1px solid var(--${p}-line-strong); border-radius: 999px; background: color-mix(in srgb, var(--${p}-surface) 92%, transparent); box-shadow: var(--${p}-shadow); backdrop-filter: blur(14px); }
+.v-hdr-7 .${p}-nav { min-height: 80px; }
+.v-hdr-7 .${p}-links { align-self: stretch; }
+.v-hdr-7 .${p}-links a { display: flex; align-items: center; }
+.v-hdr-8 .${p}-nav { min-height: 76px; }
+.v-hdr-9 .v-hdr-ctas { padding-left: 1rem; border-left: 1px solid var(--${p}-line-strong); }
+.v-hdr-10 .${p}-nav { padding-block: 0.75rem; }
+.v-hdr-10 .${p}-links { padding-top: 0.65rem; border-top: 1px solid var(--${p}-line); }
+.v-hdr-11 { position: absolute; left: 0; right: 0; color: #fff; }
+.v-hdr-11 .${p}-brand-name, .v-hdr-11 .${p}-links a { color: #fff; }
+.v-hdr-11 .${p}-nav { min-height: 86px; }
+.v-hdr-11 .${p}-call { border: 1px solid rgba(255,255,255,0.4); }
+.v-hdr-12 .${p}-nav { min-height: 98px; }
+.v-hdr-12 .${p}-brand-name { font-size: 1.4rem; }
+.v-hdr-13 { border-block: 1px solid var(--${p}-ink); }
+.v-hdr-13 .${p}-nav { min-height: 58px; }
+.v-hdr-13 .${p}-links a { font-family: ${mono}; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.v-hdr-14 { border-bottom: 5px solid var(--${p}-accent); }
+.v-hdr-14 .${p}-call { border-radius: 0; }
+.v-hdr-15 .${p}-brand { min-width: 220px; }
+.v-hdr-15 .${p}-links { padding-inline: 1.4rem; border-inline: 1px solid var(--${p}-line-strong); }
+
+/* Premium header family (16–18) */
+.v-hdr-signal { min-height: 34px; display: flex; align-items: center; background: var(--${p}-accent); border-bottom: 1px solid var(--${p}-ink); color: var(--${p}-ink); font-family: ${mono}; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.v-hdr-signal .${p}-wrap { display: flex; justify-content: space-between; gap: 1rem; }
+.v-hdr-signal a { color: var(--${p}-ink); }
+.v-hdr-engineering { border-bottom: 1px solid var(--${p}-ink); }
+.v-hdr-engineering .${p}-nav { min-height: 78px; }
+.v-hdr-engineering .${p}-brand img, .v-hdr-dispatch .${p}-brand img { border-radius: 0; }
+.v-hdr-engineering .${p}-links a { font-family: ${mono}; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.v-hdr-engineering .${p}-call { border-radius: 0; }
+.v-hdr-index { align-self: stretch; display: flex; align-items: center; padding-right: 1rem; border-right: 1px solid var(--${p}-line-strong); font-family: ${mono}; font-size: 0.62rem; color: var(--${p}-primary); }
+.v-hdr-dispatch { background: var(--${p}-dark); border-bottom: 3px solid var(--${p}-accent); }
+.v-hdr-dispatch .${p}-nav { min-height: 80px; }
+.v-hdr-dispatch .${p}-brand-name, .v-hdr-dispatch .${p}-links a { color: var(--${p}-dark-text); }
+.v-hdr-dispatch .${p}-links a:hover { color: var(--${p}-accent); }
+.v-hdr-status { display: inline-flex; align-items: center; gap: 0.45rem; margin-left: 1.2rem; color: var(--${p}-accent); font-family: ${mono}; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.v-hdr-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--${p}-accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--${p}-accent) 18%, transparent); }
+.v-hdr-dispatch .${p}-call { border-radius: 0; }
+.v-hdr-editorial { margin: 0.65rem auto; width: min(1180px, calc(100% - 2rem)); border: 1px solid var(--${p}-line-strong); border-radius: 18px; background: color-mix(in srgb, var(--${p}-surface) 92%, transparent); backdrop-filter: blur(14px); box-shadow: var(--${p}-shadow); }
+.v-hdr-editorial .${p}-wrap { padding-inline: 0.8rem; }
+.v-hdr-editorial-nav { display: flex; align-items: center; gap: 1rem; margin-left: auto; }
+.v-hdr-editorial-nav .${p}-links { margin-left: 0; }
+.v-hdr-arrow { padding-bottom: 0.2rem; border-bottom: 1px solid currentColor; color: var(--${p}-primary); font-weight: 800; }
+
+/* Shared premium mobile navigation */
+.v-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--${p}-ink); }
+.v-drawer-close { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--${p}-ink); border-radius: 0; background: transparent; cursor: pointer; }
+.v-drawer-close span, .v-drawer-close span::after { display: block; width: 20px; height: 2px; background: var(--${p}-ink); }
+.v-drawer-close span { transform: rotate(45deg); }
+.v-drawer-close span::after { content: ""; transform: rotate(90deg); }
+.v-drawer-label { margin: 1.5rem 0 0.6rem; font-family: ${mono}; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--${p}-primary); }
+.${p}-drawer-panel { display: flex; flex-direction: column; width: min(420px, 92vw); padding: 1.3rem; border-left: 5px solid var(--${p}-accent); box-shadow: -24px 0 70px rgba(0,0,0,0.28); }
+.${p}-drawer-links { gap: 0; border-top: 1px solid var(--${p}-line); }
+.${p}-drawer-links a { display: grid; grid-template-columns: 42px 1fr; gap: 0.8rem; align-items: center; min-height: 58px; padding: 0.7rem 0; border-bottom: 1px solid var(--${p}-line); font-family: ${display}; font-size: 1.08rem; transition: padding 0.16s ease, color 0.16s ease; }
+.${p}-drawer-links a span { font-family: ${mono}; font-size: 0.65rem; color: var(--${p}-primary); }
+.${p}-drawer-links a:hover { padding-left: 0.6rem; color: var(--${p}-primary); }
+.v-drawer-foot { margin-top: auto; padding-top: 1.5rem; }
+.v-drawer-foot p { font-size: 0.85rem; }
+.v-drawer-foot .${p}-call { width: 100%; min-height: 54px; justify-content: center; border-radius: 0; }
+.v-hdr-dispatch .${p}-menu { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); }
+.v-hdr-dispatch .${p}-menu span, .v-hdr-dispatch .${p}-menu span::before, .v-hdr-dispatch .${p}-menu span::after { background: var(--${p}-dark-text); }
+
 /* Footer variants */
 .v-ftr-logo { display: inline-block; width: 40px; height: 40px; border-radius: 10px; flex: none; }
 .${p}-footer-brand { display: flex; align-items: center; gap: 0.6rem; }
@@ -1186,7 +1527,34 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-ftr-accent { border-top: 3px solid var(--${p}-accent); }
 .v-ftr-brandblock .${p}-footer-grid > div:first-child { grid-row: span 1; }
 
+/* Premium footer family (16–18) */
+.v-ftr-blue { background: var(--${p}-dark); border-top: 6px solid var(--${p}-accent); }
+.v-ftr-blueprint { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; border-inline: 1px solid rgba(255,255,255,0.16); }
+.v-ftr-blueprint > div { min-height: 300px; padding: 2rem 1.4rem; border-right: 1px solid rgba(255,255,255,0.16); }
+.v-ftr-blueprint > div:last-child { border-right: 0; }
+.v-ftr-blueprint span { font-family: ${mono}; font-size: 0.66rem; letter-spacing: 0.09em; color: var(--${p}-accent); }
+.v-ftr-blue-brand strong { display: block; margin: 1.2rem 0; font-family: ${display}; font-size: clamp(2rem, 4vw, 4.4rem); line-height: 0.92; color: var(--${p}-dark-text); }
+.v-ftr-blue-brand p { color: var(--${p}-dark-muted); }
+.v-ftr-blue-cell .${p}-footer-links { margin-top: 1.2rem; }
+.v-ftr-blue-phone { display: block; margin-top: 1.2rem; color: var(--${p}-dark-text); font-family: ${display}; font-size: 1.4rem; }
+.v-ftr-hazard { background: var(--${p}-accent); color: var(--${p}-dark); border-bottom: 1px solid var(--${p}-dark); }
+.v-ftr-hazard .${p}-wrap { min-height: 220px; display: grid; grid-template-columns: auto 1fr auto; gap: 2rem; align-items: center; }
+.v-ftr-hazard span { font-family: ${mono}; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; writing-mode: vertical-rl; }
+.v-ftr-hazard h2 { margin: 0; color: var(--${p}-dark); font-size: clamp(2.4rem, 6vw, 5rem); line-height: 0.9; }
+.v-ftr-hazard a { padding-bottom: 0.3rem; border-bottom: 2px solid currentColor; color: var(--${p}-dark); font-weight: 800; }
+.v-ftr-editorial-shell { overflow: hidden; }
+.v-ftr-editorial { display: grid; gap: 2rem; padding-top: 3rem; }
+.v-ftr-editorial-lead { display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+.v-ftr-editorial-lead p { max-width: 700px; margin: 0; color: var(--${p}-dark-text); font-family: ${display}; font-size: clamp(2rem, 4vw, 4rem); line-height: 1; }
+.v-ftr-wordmark { max-width: 100%; overflow: hidden; padding-block: 1rem; border-block: 1px solid rgba(255,255,255,0.16); color: var(--${p}-dark-text); font-family: ${display}; font-size: clamp(4rem, 12vw, 10rem); font-weight: 800; line-height: 0.85; letter-spacing: -0.07em; white-space: nowrap; }
+.v-ftr-editorial-links { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 600px; margin-left: auto; padding-bottom: 2rem; }
+
 /* ============================ Expanded section styles ============================ */
+.v-section-head { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr); gap: 0 3.5rem; align-items: end; margin-bottom: clamp(2rem, 4vw, 3.5rem); padding-bottom: 1.4rem; border-bottom: 1px solid var(--${p}-line-strong); }
+.v-section-head .${p}-eyebrow { grid-column: 1; }
+.v-section-head h2 { grid-column: 1; margin-bottom: 0; max-width: 720px; font-size: clamp(2rem, 4vw, 3.8rem); line-height: 0.98; letter-spacing: -0.045em; }
+.v-section-head .v-sec-blurb { grid-column: 2; grid-row: 1 / span 2; align-self: end; margin: 0; }
+.${p}-section-dark .v-section-head { border-bottom-color: rgba(255,255,255,0.2); }
 .v-sec-blurb { max-width: 60ch; margin: 0.6rem 0 1.6rem; color: var(--${p}-ink-soft); font-size: 1.02rem; }
 .${p}-section-dark .v-sec-blurb { color: var(--${p}-dark-muted); }
 .v-svc-more { display: inline-block; margin-top: 0.6rem; font-weight: 700; color: var(--${p}-primary); font-size: 0.9rem; }
@@ -1434,8 +1802,285 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-cov-underline a { padding: 0.5rem 0; color: var(--${p}-ink-soft); border-bottom: 1px solid transparent; }
 .v-cov-underline a:hover { color: var(--${p}-primary); border-bottom-color: var(--${p}-primary); }
 
+/* Premium treatment for the large section families.
+   The style index now changes the shape language as well as the grid arrangement. */
+.v-sec-services .${p}-media-card { border-radius: 22px 22px 64px 22px; box-shadow: none; }
+.v-sec-services .${p}-media-card:hover { transform: translateY(-6px); box-shadow: var(--${p}-shadow-lift); }
+.v-sec-services .${p}-media-card-thumb img { filter: saturate(0.72) contrast(1.05); }
+.v-sec-services .${p}-media-card-num { width: 48px; height: 48px; display: grid; place-items: center; left: 0; top: 0; border-radius: 0; background: var(--${p}-accent); color: var(--${p}-dark); font-family: ${mono}; }
+.v-svc-1 .v-rows { gap: 0; border-top: 1px solid var(--${p}-ink); }
+.v-svc-1 .v-row { min-height: 112px; padding: 0.9rem 1rem 0.9rem 0; border: 0; border-bottom: 1px solid var(--${p}-ink); border-left: 6px solid transparent; border-radius: 0; box-shadow: none; background: transparent; }
+.v-svc-1 .v-row:hover { padding-left: 1rem; border-left-color: var(--${p}-accent); background: var(--${p}-surface); transform: none; }
+.v-svc-1 .v-row-num { font-family: ${mono}; font-size: 0.72rem; }
+.v-svc-1 .v-row-body strong { font-family: ${display}; font-size: clamp(1.15rem, 2vw, 1.7rem); }
+.v-svc-2 .v-svc-textcard { min-height: 245px; display: grid; grid-template-rows: auto auto 1fr auto; border: 1px solid var(--${p}-ink); border-radius: 0; box-shadow: 8px 8px 0 var(--${p}-primary-soft); }
+.v-svc-2 .v-svc-index { font-size: 2.8rem; line-height: 1; color: color-mix(in srgb, var(--${p}-primary) 35%, transparent); }
+.v-svc-4 .v-svc-icon { min-height: 150px; align-items: center; border-radius: 18px; border-top: 4px solid var(--${p}-primary); }
+.v-svc-4 .v-svc-icon:nth-child(even) { border-top-color: var(--${p}-accent); }
+.v-svc-5 .v-svc-mtile { border-radius: 24px 24px 70px 24px; }
+.v-svc-8 .v-svc-bordered { border: 1px solid var(--${p}-ink); border-radius: 0; }
+.v-svc-8 .v-svc-bcell { min-height: 190px; display: grid; align-content: end; border-color: var(--${p}-ink); }
+.v-svc-9 .v-svc-ocard { min-height: 300px; border-radius: 26px 26px 76px 26px; }
+.v-svc-10 .v-svc-bignum-row { grid-template-columns: 120px 1fr; min-height: 150px; border-bottom-color: var(--${p}-ink); }
+.v-svc-10 .v-svc-bignum-n { font-size: 5rem; letter-spacing: -0.07em; }
+
+.v-sec-feature.v-feat-1 .v-feat-card { min-height: 230px; display: grid; align-content: end; border-radius: 22px 22px 58px 22px; border-top: 5px solid var(--${p}-primary); box-shadow: var(--${p}-shadow); }
+.v-sec-feature.v-feat-1 .v-feat-card:nth-child(even) { border-top-color: var(--${p}-accent); }
+.v-feat-2 .v-feat-numbered li { min-height: 150px; align-items: center; padding-block: 1.2rem; border-bottom: 1px solid var(--${p}-ink); }
+.v-feat-2 .v-feat-n { min-width: 88px; font-size: 3.8rem; letter-spacing: -0.06em; }
+.v-feat-3 .v-feat-checklist li { min-height: 110px; padding: 1.2rem; border: 1px solid var(--${p}-line-strong); background: var(--${p}-surface); }
+.v-feat-4 .v-feat-row { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 2rem; min-height: 120px; align-items: center; border-bottom-color: var(--${p}-ink); }
+.v-feat-7 .v-feat-qcell { min-height: 220px; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 0; }
+.v-feat-9 .v-feat-bsitem { min-height: 150px; align-items: center; border-bottom-color: var(--${p}-ink); }
+
+.v-sec-comparison .v-compare { border-color: var(--${p}-ink); border-radius: 0; }
+.v-sec-comparison .v-compare-head { background: var(--${p}-dark); color: var(--${p}-dark-text); }
+.v-sec-comparison .v-compare-head .v-compare-us { color: var(--${p}-accent); }
+.v-sec-comparison .v-compare-row { min-height: 72px; align-items: stretch; }
+.v-sec-comparison .v-compare-row span { display: flex; align-items: center; border-bottom-color: var(--${p}-line-strong); }
+
+.v-sec-testimonial.v-tst-0 .v-tst-big { max-width: 980px; padding: clamp(2rem, 5vw, 4rem); border-left: 7px solid var(--${p}-accent); background: var(--${p}-dark); text-align: left; }
+.v-sec-testimonial.v-tst-0 .v-tst-big blockquote { color: var(--${p}-dark-text); font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 1.1; }
+.v-sec-testimonial.v-tst-0 .v-tst-big figcaption { color: var(--${p}-accent); }
+.v-tst-2 .v-tst-row { border-radius: 0; border-left: 5px solid var(--${p}-primary); box-shadow: 7px 7px 0 var(--${p}-primary-soft); }
+.v-tst-5 .v-tst-bubble blockquote { min-height: 170px; border-radius: 22px 22px 55px 22px; }
+.v-tst-8 .v-tst-bordered { border-color: var(--${p}-ink); border-radius: 0; }
+.v-tst-10 .v-tst-mark { padding: 3rem; background-image: radial-gradient(color-mix(in srgb, var(--${p}-primary) 16%, transparent) 1px, transparent 1px); background-size: 20px 20px; border: 2px solid var(--${p}-primary); }
+
+.v-sec-coverage.v-cov-0 .${p}-city-grid { gap: 0; border: 1px solid var(--${p}-ink); }
+.v-sec-coverage.v-cov-0 .${p}-city-tile { min-height: 82px; border: 0; border-right: 1px solid var(--${p}-ink); border-bottom: 1px solid var(--${p}-ink); border-radius: 0; }
+.v-cov-3 .v-cov-card { min-height: 92px; border-radius: 0; border-color: var(--${p}-ink); }
+.v-cov-7 .v-cov-mapart { min-height: 360px; border: 2px solid var(--${p}-primary); border-radius: 0; background-image: linear-gradient(color-mix(in srgb, var(--${p}-primary) 14%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--${p}-primary) 14%, transparent) 1px, transparent 1px); background-size: 24px 24px; }
+.v-cov-8 .v-cov-bigtile { min-height: 100px; border-radius: 20px 20px 46px 20px; }
+
+.v-sec-faq .v-acc-item { border-radius: 0; border-inline: 0; border-top: 0; border-bottom-color: var(--${p}-ink); background: transparent; }
+.v-sec-faq .v-acc-item summary { min-height: 76px; }
+.v-sec-faq .v-acc-item summary h3 { font-family: ${display}; font-size: 1.15rem; }
+.v-faq-0 .${p}-card { min-height: 230px; border-radius: 22px 22px 58px 22px; border-top: 5px solid var(--${p}-primary); }
+.v-faq-4 .v-faq-numbered li { min-height: 140px; align-items: center; border-bottom: 1px solid var(--${p}-ink); }
+.v-faq-8 .v-faq-ccard { min-height: 210px; border-radius: 0; border-top: 4px solid var(--${p}-accent); }
+
+/* Compact composition pieces (20) */
+.v-micro { padding-block: clamp(1.35rem, 3vw, 2.4rem); }
+.v-micro h2 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 2rem); }
+.v-micro p { margin: 0; }
+/* Re-assert the shared eyebrow and action styles: the two rules above are more specific
+   than the theme's own .${p}-eyebrow / .${p}-actions, so without this an eyebrow inside a
+   compact piece would lose its spacing and colour, and a CTA row would keep the hero's
+   large top margin and sit off-centre in these single-row layouts. */
+.v-micro .${p}-eyebrow { margin: 0 0 0.5rem; color: var(--${p}-primary); }
+.v-micro .${p}-actions { margin-top: 0; }
+/* Compact pieces always render as a soft band, so two in a row would otherwise show a
+   doubled hairline between two identical backgrounds. */
+.v-micro + .v-micro { border-top: none; }
+.v-micro-bar, .v-micro-window, .v-micro-contact, .v-micro-promise, .v-micro-score, .v-micro-local, .v-micro-equipment, .v-micro-quick { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; }
+.v-micro-live { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--${p}-primary); font-weight: 700; white-space: nowrap; }
+.v-micro-live i { width: 9px; height: 9px; border-radius: 50%; background: var(--${p}-accent-deep); box-shadow: 0 0 0 5px var(--${p}-primary-soft); }
+.v-micro-bar > strong { flex: 1; font-family: ${display}; font-size: 1.1rem; }
+.v-micro-score { border-left: 4px solid var(--${p}-accent); padding-left: 1.3rem; }
+.v-micro-score > div { display: grid; gap: 0.2rem; }
+.v-micro-score p { color: var(--${p}-ink-soft); }
+.v-micro-stars { color: #f5a623; letter-spacing: 0.12em; }
+.v-micro-badges, .v-micro-chips { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.7rem; }
+.v-micro-badges span, .v-micro-chips span { padding: 0.6rem 0.95rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: 999px; font-size: 0.88rem; font-weight: 700; }
+.v-micro-badges span { color: var(--${p}-primary); }
+.v-micro-split { display: grid; grid-template-columns: auto minmax(260px, 1fr) minmax(260px, 0.8fr); align-items: center; gap: 1.4rem; }
+.v-micro-split > p { color: var(--${p}-ink-soft); max-width: 50ch; }
+.v-micro-index { font-family: ${mono}; font-size: 0.85rem; color: var(--${p}-primary); align-self: start; }
+.v-micro-window { padding: 1.25rem 1.4rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; box-shadow: var(--${p}-shadow); }
+.v-micro-window > div { display: grid; gap: 0.2rem; }
+.v-micro-window span, .v-micro-hours span { color: var(--${p}-muted); font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.v-micro-match, .v-micro-photo, .v-micro-quote { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+.v-micro-match p:not(.${p}-eyebrow), .v-micro-photo p, .v-micro-after p, .v-micro-case p { margin-top: 0.55rem; color: var(--${p}-ink-soft); }
+.v-micro-linkgrid, .v-micro-citylinks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.v-micro-linkgrid a, .v-micro-citylinks a { padding: 0.65rem 0; border-bottom: 1px solid var(--${p}-line); font-weight: 700; color: var(--${p}-ink); }
+.v-micro-linkgrid a:hover, .v-micro-citylinks a:hover { color: var(--${p}-primary); }
+.v-micro-centered { display: grid; justify-items: center; text-align: center; gap: 0.75rem; }
+.v-micro-scale { display: grid; grid-template-columns: auto 1fr auto 1fr auto auto; align-items: center; gap: 0.8rem; }
+.v-micro-scale i { height: 1px; min-width: 24px; background: var(--${p}-line-strong); }
+.v-micro-scale span { font-size: 0.86rem; color: var(--${p}-ink-soft); white-space: nowrap; }
+.v-micro-scale strong { margin-left: 1rem; color: var(--${p}-primary); }
+.v-micro-note { display: grid; grid-template-columns: auto minmax(260px, 1fr) auto; align-items: center; gap: 1.2rem; max-width: 900px; margin: 0 auto; }
+.v-micro-note blockquote { margin: 0; font-family: ${display}; font-size: clamp(1.05rem, 2vw, 1.4rem); line-height: 1.4; }
+.v-micro-note > strong { color: var(--${p}-primary); font-size: 0.88rem; }
+.v-micro-avatar { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: var(--${p}-primary); color: #fff; font-family: ${display}; font-size: 1.3rem; font-weight: 800; }
+.v-micro-promise > span { display: grid; place-items: center; width: 52px; height: 52px; flex: none; border-radius: 50%; background: var(--${p}-primary); color: #fff; font-size: 1.25rem; }
+.v-micro-promise > div { flex: 1; }
+.v-micro-photo img { width: 100%; max-height: 250px; object-fit: cover; border-radius: ${radiusCard}px; box-shadow: var(--${p}-shadow); }
+.v-micro-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; overflow: hidden; background: var(--${p}-surface); }
+.v-micro-steps li { display: flex; align-items: center; gap: 0.8rem; padding: 1.1rem 1.2rem; border-right: 1px solid var(--${p}-line); }
+.v-micro-steps li:last-child { border-right: none; }
+.v-micro-steps span { color: var(--${p}-primary); font-family: ${mono}; font-weight: 800; }
+.v-micro-contact > div:first-child { flex: 1; }
+.v-micro-hours { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; background: var(--${p}-line); }
+.v-micro-hours > div { display: grid; gap: 0.25rem; padding: 1.1rem 1.3rem; background: var(--${p}-surface); }
+.v-micro-pin { width: 22px; height: 22px; flex: none; border-radius: 50% 50% 50% 0; background: var(--${p}-primary); transform: rotate(-45deg); }
+.v-micro-local > div:nth-child(2) { flex: 1; }
+.v-micro-citylinks { min-width: 280px; }
+.v-micro-equipment { border-top: 1px solid var(--${p}-line); border-bottom: 1px solid var(--${p}-line); padding-block: 1rem; }
+.v-micro-equipment strong { color: var(--${p}-primary); }
+.v-micro-equipment span { color: var(--${p}-ink-soft); font-size: 0.88rem; }
+.v-micro-after { display: grid; grid-template-columns: auto minmax(220px, 0.8fr) minmax(260px, 1fr); gap: 1.3rem; align-items: center; }
+.v-micro-after > span { font-family: ${mono}; color: var(--${p}-primary); font-size: 0.82rem; text-transform: uppercase; }
+.v-micro-quote ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+.v-micro-quote li { padding: 0.7rem 0.9rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: 10px; color: var(--${p}-primary); font-weight: 700; }
+.v-micro-case { display: grid; grid-template-columns: auto 1fr auto; gap: 1.5rem; align-items: center; border-left: 5px solid var(--${p}-primary); padding: 0.5rem 0 0.5rem 1.4rem; }
+.v-micro-case > span { writing-mode: vertical-rl; transform: rotate(180deg); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; color: var(--${p}-muted); }
+.v-micro-case > strong { font-family: ${display}; font-size: 1.7rem; color: var(--${p}-primary); text-align: right; }
+.v-micro-case small { font-family: inherit; font-size: 0.7rem; color: var(--${p}-ink-soft); }
+.v-micro-quick { overflow-x: auto; }
+.v-micro-quick > * { white-space: nowrap; }
+.v-micro-quick a { font-weight: 700; color: var(--${p}-ink-soft); }
+.v-micro-quick a:hover, .v-micro-quick a:last-child { color: var(--${p}-primary); }
+
+/* Premium micro art direction
+   These are intentionally not one shared set of rounded cards. Each piece borrows a
+   different composition language from the reference builds: field documentation,
+   work-order ledgers, hazard bands, editorial pull-quotes, and blueprint diagrams. */
+
+/* 01 — industrial signal strip */
+.v-micro-availability-bar { padding-block: 0; background: var(--${p}-accent); border-block: 1px solid var(--${p}-ink); }
+.v-micro-availability-bar .v-micro-bar { min-height: 82px; }
+.v-micro-availability-bar .v-micro-live { color: var(--${p}-ink); font-family: ${mono}; text-transform: uppercase; letter-spacing: 0.08em; }
+.v-micro-availability-bar .v-micro-live i { background: var(--${p}-ink); box-shadow: 0 0 0 6px color-mix(in srgb, var(--${p}-ink) 14%, transparent); }
+.v-micro-availability-bar .${p}-call { border: 1px solid var(--${p}-ink); background: var(--${p}-ink); color: #fff; border-radius: 0; }
+
+/* 02 — review editorial with an oversized score mark */
+.v-micro-trust-score .v-micro-score { min-height: 150px; padding: 1.7rem 2rem 1.7rem 8rem; border: 1px solid var(--${p}-ink); border-left: 1px solid var(--${p}-ink); background: var(--${p}-surface); position: relative; }
+.v-micro-trust-score .v-micro-score::before { content: "5.0"; position: absolute; left: 1.6rem; top: 50%; transform: translateY(-50%); font-family: ${display}; font-size: 3.2rem; font-weight: 800; line-height: 1; color: var(--${p}-primary); }
+.v-micro-trust-score .v-micro-score::after { content: ""; position: absolute; left: 6.25rem; top: 1.3rem; bottom: 1.3rem; width: 1px; background: var(--${p}-line-strong); }
+.v-micro-trust-score .v-micro-score > div { gap: 0.45rem; }
+
+/* 03 — certification ledger, square and fully segmented */
+.v-micro-license-strip { padding-block: 0; }
+.v-micro-license-strip .v-micro-badges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--${p}-ink); }
+.v-micro-license-strip .v-micro-badges span { min-height: 86px; display: flex; align-items: center; justify-content: center; padding: 1rem; border: 0; border-right: 1px solid var(--${p}-ink); border-radius: 0; background: var(--${p}-surface); font-family: ${mono}; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.v-micro-license-strip .v-micro-badges span:last-child { border-right: 0; }
+
+/* 04 — split manifesto with large index ghost */
+.v-micro-price-promise { background-image: radial-gradient(color-mix(in srgb, var(--${p}-primary) 18%, transparent) 1px, transparent 1px); background-size: 20px 20px; }
+.v-micro-price-promise .v-micro-split { min-height: 220px; grid-template-columns: 150px minmax(260px, 1fr) minmax(260px, 0.8fr); border-block: 1px solid var(--${p}-ink); }
+.v-micro-price-promise .v-micro-index { font-family: ${display}; font-size: 5.5rem; font-weight: 800; letter-spacing: -0.07em; color: color-mix(in srgb, var(--${p}-primary) 30%, transparent); }
+.v-micro-price-promise .v-micro-split > p { padding-left: 1.6rem; border-left: 1px solid var(--${p}-ink); }
+
+/* 05 — dispatch/work-order ticket */
+.v-micro-response-window .v-micro-window { min-height: 128px; padding: 0; display: grid; grid-template-columns: 1fr 1.3fr auto; gap: 0; border: 1px solid var(--${p}-ink); border-left: 7px solid var(--${p}-primary); border-radius: 0; box-shadow: 10px 10px 0 var(--${p}-primary-soft); }
+.v-micro-response-window .v-micro-window > div { justify-content: center; padding: 1.25rem 1.5rem; border-right: 1px solid var(--${p}-line-strong); }
+.v-micro-response-window .v-micro-window > div::before { content: "WORK ORDER"; font-family: ${mono}; font-size: 0.62rem; letter-spacing: 0.12em; color: var(--${p}-primary); }
+.v-micro-response-window .v-micro-window .${p}-call { align-self: stretch; display: flex; border-radius: 0; }
+
+/* 06 — warm urgent split panel */
+.v-micro-service-match .v-micro-match { padding: clamp(1.6rem, 4vw, 3rem); border: 1px solid color-mix(in srgb, var(--${p}-primary) 38%, var(--${p}-line)); border-radius: clamp(22px, ${radiusCard * 1.8}px, 38px); background: linear-gradient(135deg, color-mix(in srgb, var(--${p}-primary-soft) 72%, #fff), var(--${p}-surface)); box-shadow: var(--${p}-shadow); }
+.v-micro-service-match .v-micro-linkgrid a { display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1rem; border: 1px solid var(--${p}-line); border-radius: 14px; background: var(--${p}-surface); }
+.v-micro-service-match .v-micro-linkgrid a::after { content: "↗"; color: var(--${p}-primary); }
+
+/* 07 — square audience/symptom tiles with full invert hover */
+.v-micro-audience-chips .v-micro-centered { justify-items: stretch; text-align: left; }
+.v-micro-audience-chips .v-micro-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.65rem; }
+.v-micro-audience-chips .v-micro-chips span { min-height: 110px; display: flex; align-items: flex-end; padding: 1rem; border-radius: 0; font-family: ${display}; font-size: 1.05rem; background: var(--${p}-surface); transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease; }
+.v-micro-audience-chips .v-micro-chips span:hover { background: var(--${p}-dark); color: #fff; transform: translateY(-3px); }
+
+/* 08 — blueprint measurement scale */
+.v-micro-project-sizes .v-micro-scale { min-height: 190px; padding: 3.6rem 1.5rem 1.4rem; border: 2px solid var(--${p}-primary); background-image: linear-gradient(color-mix(in srgb, var(--${p}-primary) 12%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--${p}-primary) 12%, transparent) 1px, transparent 1px); background-size: 24px 24px; position: relative; }
+.v-micro-project-sizes .v-micro-scale::before { content: "PROJECT SCALE / CAPACITY MAP"; position: absolute; top: 1rem; left: 1.5rem; font-family: ${mono}; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; color: var(--${p}-primary); }
+.v-micro-project-sizes .v-micro-scale i { height: 10px; border-top: 2px solid var(--${p}-primary); border-inline: 1px solid var(--${p}-primary); background: transparent; }
+.v-micro-project-sizes .v-micro-scale strong { padding: 0.65rem 0.9rem; background: var(--${p}-primary); color: #fff; }
+
+/* 09 — dark editorial pull quote */
+.v-micro-team-note .v-micro-note { min-height: 230px; max-width: none; grid-template-columns: 90px 1fr auto; padding: 2.4rem; background: var(--${p}-dark); color: var(--${p}-dark-text); border-top: 6px solid var(--${p}-accent); position: relative; overflow: hidden; }
+.v-micro-team-note .v-micro-note::after { content: "“"; position: absolute; right: 1rem; bottom: -3.6rem; font-family: Georgia, serif; font-size: 13rem; color: rgba(255,255,255,0.05); }
+.v-micro-team-note .v-micro-avatar { width: 70px; height: 70px; border-radius: 20px 20px 36px 20px; background: var(--${p}-accent); color: var(--${p}-dark); }
+.v-micro-team-note .v-micro-note blockquote { position: relative; z-index: 1; color: var(--${p}-dark-text); font-size: clamp(1.35rem, 3vw, 2.2rem); max-width: 780px; }
+.v-micro-team-note .v-micro-note > strong { position: relative; z-index: 1; color: var(--${p}-accent); }
+
+/* 10 — stamped workmanship certificate */
+.v-micro-workmanship-promise .v-micro-promise { min-height: 170px; padding: 1.7rem 2rem; border: 2px dashed var(--${p}-ink); background: var(--${p}-surface); box-shadow: 8px 8px 0 var(--${p}-accent); }
+.v-micro-workmanship-promise .v-micro-promise > span { width: 76px; height: 76px; border: 2px solid var(--${p}-primary); border-radius: 50%; background: transparent; color: var(--${p}-primary); font-size: 1.7rem; box-shadow: inset 0 0 0 7px var(--${p}-primary-soft); }
+.v-micro-workmanship-promise .${p}-secondary { border-radius: 0; }
+
+/* 11 — asymmetric field photo with overlapping documentation ticket */
+.v-micro-photo-proof .v-micro-photo { grid-template-columns: 1.15fr 0.85fr; gap: 0; position: relative; padding: 0 1.5rem 1.5rem 0; }
+.v-micro-photo-proof .v-micro-photo::after { content: ""; position: absolute; inset: 1.5rem 0 0 1.5rem; border: 2px solid var(--${p}-primary); z-index: 0; }
+.v-micro-photo-proof .v-micro-photo img { max-height: 430px; min-height: 330px; border-radius: 28px 28px 82px 28px; filter: grayscale(0.45) contrast(1.05); position: relative; z-index: 1; }
+.v-micro-photo-proof .v-micro-photo > div { align-self: center; margin-left: -3.5rem; padding: 2rem; background: var(--${p}-dark); color: var(--${p}-dark-text); border-left: 6px solid var(--${p}-accent); box-shadow: var(--${p}-shadow-lift); position: relative; z-index: 2; }
+.v-micro-photo-proof .v-micro-photo h2 { color: var(--${p}-dark-text); }
+.v-micro-photo-proof .v-micro-photo p { color: var(--${p}-dark-muted); }
+.v-micro-photo-proof .v-micro-photo .${p}-eyebrow { color: var(--${p}-accent); }
+
+/* 12 — night-shift job stamps */
+.v-micro-booking-steps { background: var(--${p}-dark); }
+.v-micro-booking-steps .v-micro-steps { gap: 0.8rem; border: 0; border-radius: 0; background: transparent; }
+.v-micro-booking-steps .v-micro-steps li { min-height: 180px; display: grid; align-content: space-between; align-items: initial; padding: 1.3rem; border: 1px solid rgba(255,255,255,0.12); border-top: 4px solid var(--${p}-primary); background: rgba(255,255,255,0.05); color: var(--${p}-dark-text); }
+.v-micro-booking-steps .v-micro-steps li:nth-child(2) { border-top-color: var(--${p}-accent); }
+.v-micro-booking-steps .v-micro-steps span { color: var(--${p}-accent); font-size: 0.75rem; letter-spacing: 0.12em; }
+.v-micro-booking-steps .v-micro-steps span::before { content: "STEP / "; }
+.v-micro-booking-steps .v-micro-steps strong { font-family: ${display}; font-size: 1.25rem; }
+
+/* 13 — full-bleed hazard CTA */
+.v-micro-contact-options { padding-block: 0; background: var(--${p}-accent); border-block: 1px solid var(--${p}-ink); }
+.v-micro-contact-options .v-micro-contact { min-height: 180px; }
+.v-micro-contact-options .v-micro-contact h2 { font-size: clamp(1.8rem, 4vw, 3.3rem); color: var(--${p}-ink); }
+.v-micro-contact-options .${p}-eyebrow { color: var(--${p}-ink); }
+.v-micro-contact-options .${p}-call { border-radius: 0; background: var(--${p}-ink); color: #fff; }
+.v-micro-contact-options .${p}-secondary { border-radius: 0; border-color: var(--${p}-ink); background: transparent; color: var(--${p}-ink); }
+
+/* 14 — segmented operations board */
+.v-micro-hours-card { padding-block: 0; background: var(--${p}-primary); }
+.v-micro-hours-card .v-micro-hours { gap: 0; border: 0; border-radius: 0; background: transparent; }
+.v-micro-hours-card .v-micro-hours > div { min-height: 116px; justify-content: center; padding: 1.2rem 1.5rem; border-right: 1px solid rgba(255,255,255,0.25); background: transparent; color: #fff; text-align: center; }
+.v-micro-hours-card .v-micro-hours > div:last-child { border-right: 0; }
+.v-micro-hours-card .v-micro-hours span { color: rgba(255,255,255,0.72); font-family: ${mono}; }
+.v-micro-hours-card .v-micro-hours strong { font-family: ${display}; font-size: 1.2rem; }
+
+/* 15 — dispatch ledger */
+.v-micro-local-note .v-micro-local { display: grid; grid-template-columns: 60px 0.85fr 1.15fr; gap: 0; border-block: 1px solid var(--${p}-ink); }
+.v-micro-local-note .v-micro-pin { align-self: center; justify-self: center; }
+.v-micro-local-note .v-micro-local > div:nth-child(2) { padding: 1.5rem; border-inline: 1px solid var(--${p}-ink); }
+.v-micro-local-note .v-micro-citylinks { min-width: 0; gap: 0; }
+.v-micro-local-note .v-micro-citylinks a { padding: 0.8rem 1rem; border-bottom: 1px solid var(--${p}-line-strong); }
+.v-micro-local-note .v-micro-citylinks a:hover { padding-left: 1.35rem; background: var(--${p}-accent); color: var(--${p}-ink); }
+
+/* 16 — moving-equipment manifest */
+.v-micro-equipment-strip { padding-block: 0; overflow: hidden; background: var(--${p}-primary-soft); border-block: 1px solid var(--${p}-ink); }
+.v-micro-equipment-strip .v-micro-equipment { min-height: 92px; border: 0; padding: 0; }
+.v-micro-equipment-strip .v-micro-equipment strong { align-self: stretch; display: flex; align-items: center; padding-inline: 1.4rem; background: var(--${p}-primary); color: #fff; font-family: ${mono}; text-transform: uppercase; letter-spacing: 0.08em; }
+.v-micro-equipment-strip .v-micro-equipment span { font-family: ${display}; font-size: 0.95rem; font-weight: 800; color: var(--${p}-ink); }
+.v-micro-equipment-strip .v-micro-equipment span::before { content: "◆"; margin-right: 1.25rem; color: var(--${p}-primary); font-size: 0.65rem; }
+
+/* 17 — editorial aftercare statement */
+.v-micro-aftercare-note .v-micro-after { min-height: 240px; grid-template-columns: 150px 1fr 1fr; border-top: 1px solid var(--${p}-ink); border-bottom: 1px solid var(--${p}-ink); }
+.v-micro-aftercare-note .v-micro-after > span { align-self: stretch; display: flex; align-items: center; border-right: 1px solid var(--${p}-ink); }
+.v-micro-aftercare-note .v-micro-after h2 { font-size: clamp(2rem, 5vw, 4.6rem); line-height: 0.95; letter-spacing: -0.05em; }
+.v-micro-aftercare-note .v-micro-after p { max-width: 42ch; font-size: 1.05rem; }
+
+/* 18 — quote specification sheet */
+.v-micro-quote-checklist .v-micro-quote { min-height: 250px; padding: 2rem; border: 2px solid var(--${p}-primary); background-image: linear-gradient(color-mix(in srgb, var(--${p}-primary) 9%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--${p}-primary) 9%, transparent) 1px, transparent 1px); background-size: 22px 22px; }
+.v-micro-quote-checklist .v-micro-quote ul { gap: 0; border: 1px solid var(--${p}-ink); }
+.v-micro-quote-checklist .v-micro-quote li { min-height: 74px; display: flex; align-items: center; border: 0; border-right: 1px solid var(--${p}-ink); border-bottom: 1px solid var(--${p}-ink); border-radius: 0; background: var(--${p}-surface); }
+.v-micro-quote-checklist .v-micro-quote li:nth-child(even) { border-right: 0; }
+
+/* 19 — case-study result plaque */
+.v-micro-mini-case-study .v-micro-case { min-height: 230px; grid-template-columns: 70px 1fr 220px; padding: 1.8rem 0 1.8rem 1.5rem; border: 1px solid var(--${p}-ink); border-left: 8px solid var(--${p}-primary); background: var(--${p}-surface); box-shadow: 12px 12px 0 var(--${p}-primary-soft); }
+.v-micro-mini-case-study .v-micro-case > span { justify-self: center; font-family: ${mono}; color: var(--${p}-primary); }
+.v-micro-mini-case-study .v-micro-case > strong { align-self: stretch; display: grid; align-content: center; padding-inline: 1.5rem; border-left: 1px solid var(--${p}-ink); font-size: 3rem; line-height: 0.85; }
+
+/* 20 — popular-service route board */
+.v-micro-quick-links .v-micro-quick { display: grid; grid-template-columns: 190px repeat(5, minmax(130px, 1fr)); gap: 0; overflow: hidden; border: 1px solid var(--${p}-ink); }
+.v-micro-quick-links .v-micro-quick > * { min-height: 96px; display: flex; align-items: center; padding: 1rem; border-right: 1px solid var(--${p}-ink); white-space: normal; }
+.v-micro-quick-links .v-micro-quick > strong { background: var(--${p}-dark); color: #fff; font-family: ${mono}; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.v-micro-quick-links .v-micro-quick a { color: var(--${p}-ink); }
+.v-micro-quick-links .v-micro-quick a:hover { background: var(--${p}-accent); color: var(--${p}-ink); }
+
 @media (max-width: 1020px) {
-  .v-hero-grad, .v-hero-stats, .v-hero-twocards, .v-features, .v-ftr-split, .v-ftr-split-cols, .v-ftr-stack-links { grid-template-columns: 1fr; }
+  .v-section-head { grid-template-columns: 1fr; gap: 0.8rem; }
+  .v-section-head .v-sec-blurb { grid-column: 1; grid-row: auto; }
+  .v-sec-logos .v-logos { grid-template-columns: repeat(3, 1fr); }
+  .v-logo { border-bottom: 1px solid color-mix(in srgb, var(--${p}-ink) 28%, transparent); }
+  .v-hero-gradient, .v-hero-stats, .v-hero-twocards, .v-features, .v-ftr-split, .v-ftr-split-cols, .v-ftr-stack-links { grid-template-columns: 1fr; }
+  .v-hero-blueprint-layout, .v-hero-night-layout, .v-hero-editorial-layout { grid-template-columns: 1fr; padding-block: 3.5rem; }
+  .v-hero-blueprint-layout, .v-hero-night-layout, .v-hero-editorial-layout { min-height: 0; }
+  .v-field-frame, .v-field-frame img, .v-night-frame, .v-editorial-stage, .v-editorial-stage > img { min-height: 420px; height: 420px; }
+  .v-depth-card { right: 10px; }
   .v-hero-offset-media { position: relative; width: 100%; height: 240px; margin-top: 1.5rem; }
   .v-hero-offset { display: block; min-height: 0; padding: 3rem 0; }
   .v-fcols-2, .v-fcols-3, .v-fcols-4 { grid-template-columns: 1fr 1fr; }
@@ -1446,8 +2091,40 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-cov-cols { columns: 2; }
   .v-cov-numbered, .v-cov-underline { grid-template-columns: repeat(2, 1fr); }
   .v-cov-maplist { grid-template-columns: 1fr; }
+  .v-micro-bar, .v-micro-window, .v-micro-contact, .v-micro-promise, .v-micro-score, .v-micro-local, .v-micro-equipment { flex-wrap: wrap; }
+  .v-micro-split, .v-micro-after { grid-template-columns: auto 1fr; }
+  .v-micro-split > p, .v-micro-after > p { grid-column: 2; }
+  .v-micro-scale { grid-template-columns: auto 1fr auto; }
+  .v-micro-scale strong { grid-column: 1 / -1; margin-left: 0; }
+  .v-micro-license-strip .v-micro-badges, .v-micro-audience-chips .v-micro-chips { grid-template-columns: 1fr 1fr; }
+  .v-micro-license-strip .v-micro-badges span:nth-child(2) { border-right: 0; }
+  .v-micro-license-strip .v-micro-badges span:nth-child(-n+2) { border-bottom: 1px solid var(--${p}-ink); }
+  .v-micro-response-window .v-micro-window { grid-template-columns: 1fr 1fr; }
+  .v-micro-response-window .v-micro-window .${p}-call { grid-column: 1 / -1; min-height: 58px; }
+  .v-micro-photo-proof .v-micro-photo > div { margin-left: -1.5rem; }
+  .v-micro-local-note .v-micro-local { grid-template-columns: 55px 1fr; }
+  .v-micro-local-note .v-micro-citylinks { grid-column: 1 / -1; border-top: 1px solid var(--${p}-ink); }
+  .v-micro-quick-links .v-micro-quick { grid-template-columns: repeat(3, 1fr); }
+  .v-hdr-index, .v-hdr-status, .v-hdr-arrow { display: none; }
+  .v-hdr-editorial-nav { margin-left: auto; }
+  .v-hdr .${p}-menu { margin-left: auto; }
+  .v-hdr-2 .v-hdr-center { display: contents; }
+  .v-hdr-3 .${p}-brand { padding-left: 0; border-left: 0; }
+  .v-hdr-6 .${p}-nav { border-radius: 18px; padding-left: 0.75rem; }
+  .v-hdr-10 .${p}-nav { flex-wrap: nowrap; }
+  .v-hdr-11 { position: sticky; }
+  .v-hdr-15 .${p}-brand { min-width: 0; }
+  .v-hdr-15 .${p}-links { border: 0; }
+  .v-ftr-blueprint { grid-template-columns: 1fr 1fr; }
+  .v-ftr-blueprint > div:nth-child(2) { border-right: 0; }
+  .v-ftr-blueprint > div { min-height: 240px; border-bottom: 1px solid rgba(255,255,255,0.16); }
+  .v-ftr-hazard .${p}-wrap { grid-template-columns: 1fr auto; }
+  .v-ftr-hazard span { display: none; }
 }
 @media (max-width: 720px) {
+  .v-section-head h2 { font-size: clamp(1.9rem, 10vw, 3rem); }
+  .v-sec-logos .v-logos { display: flex; overflow-x: auto; padding-inline: 0; scroll-snap-type: x proximity; }
+  .v-logo { min-width: 190px; min-height: 68px; flex: 0 0 auto; border-bottom: 0; scroll-snap-align: start; }
   .v-compare-head span:first-child { display: none; }
   .v-compare-head, .v-compare-row { grid-template-columns: 1fr 1fr; }
   .v-row { grid-template-columns: 36px 1fr 24px; }
@@ -1458,6 +2135,60 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-svc-mtile-lead { grid-column: span 1; grid-row: span 1; }
   .v-cov-cols { columns: 1; }
   .v-cov-numbered, .v-cov-underline { grid-template-columns: 1fr; }
+  .v-micro-match, .v-micro-photo, .v-micro-quote, .v-micro-note, .v-micro-case { grid-template-columns: 1fr; }
+  .v-micro-steps, .v-micro-hours { grid-template-columns: 1fr; }
+  .v-micro-steps li { border-right: none; border-bottom: 1px solid var(--${p}-line); }
+  .v-micro-steps li:last-child { border-bottom: none; }
+  .v-micro-split, .v-micro-after { grid-template-columns: 1fr; }
+  .v-micro-split > p, .v-micro-after > p { grid-column: auto; }
+  .v-micro-scale { display: flex; flex-wrap: wrap; }
+  .v-micro-scale i { flex: 1; }
+  .v-micro-note > strong, .v-micro-case > strong { text-align: left; }
+  .v-micro-case > span { writing-mode: initial; transform: none; }
+  .v-micro-citylinks { min-width: 0; width: 100%; }
+  .v-micro-equipment { align-items: flex-start; flex-direction: column; }
+  .v-micro-trust-score .v-micro-score { display: grid; padding: 6rem 1.25rem 1.25rem; }
+  .v-micro-trust-score .v-micro-score::before { top: 1.35rem; left: 1.25rem; transform: none; }
+  .v-micro-trust-score .v-micro-score::after { left: 1.25rem; right: 1.25rem; top: 5.2rem; bottom: auto; width: auto; height: 1px; }
+  .v-micro-license-strip .v-micro-badges, .v-micro-audience-chips .v-micro-chips { grid-template-columns: 1fr; }
+  .v-micro-license-strip .v-micro-badges span { min-height: 64px; border-right: 0; border-bottom: 1px solid var(--${p}-ink); }
+  .v-micro-license-strip .v-micro-badges span:last-child { border-bottom: 0; }
+  .v-micro-price-promise .v-micro-split { grid-template-columns: 1fr; padding-block: 1.5rem; }
+  .v-micro-price-promise .v-micro-split > p { padding: 1rem 0 0; border-left: 0; border-top: 1px solid var(--${p}-ink); }
+  .v-micro-response-window .v-micro-window { grid-template-columns: 1fr; }
+  .v-micro-response-window .v-micro-window > div { border-right: 0; border-bottom: 1px solid var(--${p}-line-strong); }
+  .v-micro-response-window .v-micro-window .${p}-call { grid-column: auto; }
+  .v-micro-team-note .v-micro-note { grid-template-columns: auto 1fr; padding: 1.5rem; }
+  .v-micro-team-note .v-micro-note blockquote { grid-column: 1 / -1; }
+  .v-micro-photo-proof .v-micro-photo { padding: 0 0.8rem 0.8rem 0; }
+  .v-micro-photo-proof .v-micro-photo > div { margin: -2rem 1rem 0; }
+  .v-micro-photo-proof .v-micro-photo img { min-height: 260px; }
+  .v-micro-booking-steps .v-micro-steps li { min-height: 130px; }
+  .v-micro-local-note .v-micro-local { grid-template-columns: 46px 1fr; }
+  .v-micro-aftercare-note .v-micro-after { grid-template-columns: 1fr; padding-block: 1.5rem; }
+  .v-micro-aftercare-note .v-micro-after > span { padding-bottom: 0.8rem; border-right: 0; border-bottom: 1px solid var(--${p}-ink); }
+  .v-micro-quote-checklist .v-micro-quote { padding: 1.25rem; }
+  .v-micro-quote-checklist .v-micro-quote ul { grid-template-columns: 1fr; }
+  .v-micro-quote-checklist .v-micro-quote li { border-right: 0; }
+  .v-micro-mini-case-study .v-micro-case { grid-template-columns: 1fr; padding: 1.3rem; }
+  .v-micro-mini-case-study .v-micro-case > strong { padding: 1rem 0 0; border-left: 0; border-top: 1px solid var(--${p}-ink); }
+  .v-micro-quick-links .v-micro-quick { grid-template-columns: 1fr; }
+  .v-micro-quick-links .v-micro-quick > * { min-height: 64px; border-right: 0; border-bottom: 1px solid var(--${p}-ink); }
+  .v-feat-4 .v-feat-row { grid-template-columns: 1fr; gap: 0.4rem; }
+  .v-svc-10 .v-svc-bignum-row { grid-template-columns: 72px 1fr; }
+  .v-svc-10 .v-svc-bignum-n { font-size: 3.3rem; }
+  .v-hero-blueprint h1, .v-hero-blueprint .v-hero-h1, .v-hero-night h1, .v-hero-night .v-hero-h1, .v-hero-editorial h1, .v-hero-editorial .v-hero-h1 { font-size: clamp(2.35rem, 13vw, 4rem); }
+  .v-field-frame, .v-field-frame img, .v-night-frame, .v-editorial-stage, .v-editorial-stage > img { min-height: 300px; height: 300px; }
+  .v-depth-card { top: 20px; width: 105px; }
+  .v-depth-card i { height: 45px; }
+  .v-work-ticket { left: 12px; bottom: 12px; }
+  .v-hdr-signal span { display: none; }
+  .v-hdr-signal .${p}-wrap { justify-content: center; }
+  .v-hdr-editorial { width: calc(100% - 1rem); margin: 0.4rem; }
+  .v-ftr-blueprint { grid-template-columns: 1fr; border-inline: 0; }
+  .v-ftr-blueprint > div { min-height: 0; border-right: 0; }
+  .v-ftr-editorial-lead, .v-ftr-hazard .${p}-wrap { display: grid; grid-template-columns: 1fr; }
+  .v-ftr-editorial-links { grid-template-columns: 1fr; width: 100%; margin-left: 0; }
 }
 
 /* ============================ Dark-band text safety ============================ */

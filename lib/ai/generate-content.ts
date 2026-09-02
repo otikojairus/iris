@@ -71,7 +71,7 @@ export type ContentGenResult = {
  * the configured limit; templates the rest. Always returns content for every page.
  */
 export async function generateProjectContent(
-  project: Pick<Project, "pages"> & { branding: Branding },
+  project: Pick<Project, "pages"> & { branding: Branding; description?: string },
 ): Promise<ContentGenResult> {
   const structure = deriveStructure(project.pages);
   const b = project.branding;
@@ -87,7 +87,7 @@ export async function generateProjectContent(
   const contentBySlug: Record<string, PageContent> = {};
 
   // AI-written pages (bounded concurrency).
-  const aiResults = await mapLimit(aiTargets, concurrency, (page) => aiPageContent(page, structure, b));
+  const aiResults = await mapLimit(aiTargets, concurrency, (page) => aiPageContent(page, structure, b, project.description));
   aiResults.forEach((content) => {
     contentBySlug[content.slug] = content;
   });
@@ -103,7 +103,7 @@ export async function generateProjectContent(
     const dupeSlugs = findDuplicates(aiResults);
     if (dupeSlugs.length) {
       const dupePages = aiTargets.filter((p) => dupeSlugs.includes(p.pageSlug));
-      const rerolled = await mapLimit(dupePages, concurrency, (page) => aiPageContent(page, structure, b));
+      const rerolled = await mapLimit(dupePages, concurrency, (page) => aiPageContent(page, structure, b, project.description));
       rerolled.forEach((content) => {
         contentBySlug[content.slug] = content;
       });

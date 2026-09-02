@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readProject, saveProject } from "@/lib/server/store";
-import { interpretEdit, type ContentEdit } from "@/lib/ai/editor";
+import { interpretEdit, CURRENT_PAGE_QUERY, type ContentEdit, type EditContext } from "@/lib/ai/editor";
 import { editPageContent } from "@/lib/ai/content";
 import { generateHomeContent } from "@/lib/ai/home-content";
 import { isAiEnabled } from "@/lib/ai/client";
@@ -71,6 +71,33 @@ function matchPages(project: Project, query: string): SeoPage[] {
   return Array.from(new Set([...cityMatches, ...scored]));
 }
 
+/**
+ * Turn the preview iframe's URL into a site-relative slug: "/sites/<id>/toronto?rev=3"
+ * becomes "/toronto", and the site root becomes "/".
+ */
+function previewSlug(projectId: string, rawPath?: string): string | undefined {
+  if (!rawPath) return undefined;
+  let p = rawPath.split("?")[0].split("#")[0].trim();
+  if (!p) return undefined;
+  const prefix = `/sites/${projectId}`;
+  if (p.startsWith(prefix)) p = p.slice(prefix.length);
+  if (!p.startsWith("/")) p = `/${p}`;
+  return p.replace(/\/+$/, "") || "/";
+}
+
+/**
+ * Describe the page currently staged in the preview so copy edits that name no page
+ * land there instead of rewriting the whole site. Paths with no editable content of
+ * their own (the /services index, unknown slugs) resolve to no context.
+ */
+function stagedContext(project: Project, rawPath?: string): EditContext {
+  const slug = previewSlug(project.id, rawPath);
+  if (!slug) return {};
+  if (slug === "/") return { currentSlug: "/", currentLabel: "the homepage" };
+  if (!project.pages.some((pg) => pg.pageSlug === slug)) return {};
+  return { currentSlug: slug, currentLabel: labelForSlug(project, slug) };
+}
+
 type ContentEditOutcome = {
   contentBySlug: Record<string, PageContent>;
   /** Present when the homepage copy was regenerated. */
@@ -98,7 +125,7 @@ async function applyContentEdit(project: Project, edit: ContentEdit): Promise<Co
     // The homepage isn't a contentBySlug entry — it has its own AI-written homeContent.
     // Regenerate it so "rewrite the homepage" actually rewrites the hero + sections.
     if (/^home(page)?$|^(front|landing) ?page$/.test(edit.query.toLowerCase().trim())) {
-      const home = await generateHomeContent({ pages: project.pages, branding: b });
+      const home = await generateHomeContent({ pages: project.pages, branding: b, description: project.prompt });
       return {
         contentBySlug: existing,
         homeContent: home,
@@ -134,7 +161,7 @@ async function applyContentEdit(project: Project, edit: ContentEdit): Promise<Co
   const results = await Promise.all(
     targets.map(async (page) => {
       const prev = existing[page.pageSlug];
-      const next = await editPageContent(page, structure, b, edit.spec, prev);
+      const next = await editPageContent(page, structure, b, edit.spec, prev, project.prompt);
       return { slug: page.pageSlug, content: next };
     }),
   );
@@ -180,9 +207,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const project = await readProject(id);
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  let body: { message?: string };
+  let body: { message?: string; currentPath?: string };
   try {
-    body = (await req.json()) as { message?: string };
+    body = (await req.json()) as { message?: string; currentPath?: string };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -192,8 +219,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const now = new Date().toISOString();
   const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: message, createdAt: now };
 
-  const { patch, reply, source } = await interpretEdit(project, message);
+  // What the user is looking at in the staged preview — unnamed edits target this page.
+  const staged = stagedContext(project, body.currentPath);
+  const { patch, reply, source } = await interpretEdit(project, message, staged);
   const aiEnabled = isAiEnabled();
+
+  // Resolve the "page I'm looking at" placeholder into a real target.
+  if (patch.contentEdit?.query === CURRENT_PAGE_QUERY) {
+    patch.contentEdit = staged.currentSlug
+      ? { ...patch.contentEdit, scope: "page", query: staged.currentSlug === "/" ? "home" : staged.currentSlug }
+      : { ...patch.contentEdit, scope: "global", query: undefined };
+  }
 
   // Merge design patch first (deep-merge branding rather than replace it).
   const merged: Project = {
@@ -208,10 +244,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Apply a content edit if one was requested, and build an accurate reply reflecting it.
   const notes: string[] = [];
   let contentReplyOverride: string | undefined;
+  // Slugs whose copy changed, so the client can reload/point the preview at them.
+  let changedSlugs: string[] = [];
   if (patch.contentEdit) {
     const outcome = await applyContentEdit(merged, patch.contentEdit);
     if (outcome.contentBySlug) merged.contentBySlug = outcome.contentBySlug;
     if (outcome.homeContent) merged.homeContent = outcome.homeContent;
+    changedSlugs = outcome.changed;
     if (outcome.reply && (outcome.changed.length === 0 || outcome.homeContent)) {
       // Nothing regenerated (no match) OR a homepage rewrite — surface the tailored reply.
       contentReplyOverride = outcome.reply;
@@ -241,7 +280,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     finalReply = contentReplyOverride;
   } else if (notes.length && patch.contentEdit && !patch.themeId && !patch.branding && !patch.variants && patch.layoutSeed === undefined) {
     // Pure content edit — prefer our accurate, specific note over the generic model reply.
-    finalReply = `Done — I ${notes.join(" ")} Refresh the preview to see it.`;
+    finalReply = `Done — I ${notes.join(" ")} It's live in the preview now.`;
   } else if (notes.length) {
     finalReply = `${reply} I also ${notes.join(" ")}`;
   } else {
@@ -269,5 +308,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   merged.messages = [...merged.messages, userMsg, assistantMsg];
 
   const saved = await saveProject(merged);
-  return NextResponse.json({ project: saved, message: assistantMsg, aiEnabled });
+  return NextResponse.json({
+    project: saved,
+    message: assistantMsg,
+    aiEnabled,
+    // Tells the workspace how to refresh: which page copy changed, and whether the
+    // design (theme/accent/layout/variants) changed, which affects every page.
+    changed: changedSlugs,
+    designChanged: !!patch.themeId || patch.layoutSeed !== undefined || !!patch.branding || !!patch.variants,
+  });
 }

@@ -13,6 +13,7 @@ import type { SiteStructure } from "@/lib/generate/content";
 import { deriveStructure, serviceShortLabel } from "@/lib/generate/content";
 import type { Branding } from "@/lib/generate/generator";
 import { getAiClient, AI_CONFIG } from "./client";
+import { NO_PSEO_RULE, businessBrief } from "./brief";
 
 const WORDS = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 
@@ -35,6 +36,27 @@ function whatWeDo(structure: SiteStructure): string {
   if (labels.length === 1) return labels[0];
   if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
   return `${labels[0]}, ${labels[1]} and ${labels[2]}`;
+}
+
+/**
+ * A short, customer-facing tagline built from the services in the plan.
+ *
+ * Used for page titles, meta descriptions and the footer. It is derived from what the
+ * business does rather than from the operator's description, because that description is
+ * often addressed to the builder ("build me a site with a blue theme…") and must never
+ * reach a visitor.
+ */
+export function templateTagline(structure: SiteStructure, b: Pick<Branding, "brandName" | "domain">): string {
+  const seed = `${b.brandName}:${b.domain}:tag`;
+  const does = whatWeDo(structure);
+  const firstPillar = structure.pillars[0];
+  const topic = firstPillar ? serviceShortLabel(firstPillar) : "";
+  return pick(seed, [
+    `${topic || "Local help"}, done properly and priced up front`,
+    `Straight-talking ${does} from people who turn up`,
+    `Honest ${does}, without the runaround`,
+    `${topic || "Help"} you can actually rely on`,
+  ]);
 }
 
 /* ------------------------------ template fallback ------------------------------ */
@@ -85,6 +107,7 @@ export function templateHomeContent(structure: SiteStructure, b: Branding): Home
   ];
 
   return {
+    tagline: templateTagline(structure, b),
     heroKicker: pick(`${seed}:kick`, ["Local help, when you need it", "Straight-talking, local help", "Real people, real help", "Here to help, locally"]),
     heroH1,
     heroLede,
@@ -133,9 +156,12 @@ VOICE (this matters most):
 - BANNED — never use these or anything like them: pSEO statistics or made-up numbers ("40 pages", "24/7 dispatch", "X cities served", "core services"), "dependable, well-documented service", "real crews, clear quotes", "across Canada" as filler, "sized to your site", "we pride ourselves", "state-of-the-art", "one-stop shop", "unparalleled", "peace of mind", "look no further", keyword-stuffed sentences, and any counts/metrics presented as bragging stats.
 - Do NOT invent statistics, ratings, awards, or numbers. Keep it human and honest.
 
+${NO_PSEO_RULE}
+
 Return ONLY a JSON object matching the requested schema. Plain text values, no markdown, no emojis.`;
 
 type HomeJson = {
+  tagline?: string;
   heroKicker?: string;
   heroH1?: string;
   heroLede?: string;
@@ -157,7 +183,7 @@ const str = (v: unknown, fb = ""): string => (typeof v === "string" && v.trim() 
 
 /** Generate homepage copy via GPT, falling back to templates on any failure/underdelivery. */
 export async function generateHomeContent(
-  project: { pages: SeoPage[]; branding: Branding },
+  project: { pages: SeoPage[]; branding: Branding; description?: string },
 ): Promise<HomeContent> {
   const structure = deriveStructure(project.pages);
   const b = project.branding;
@@ -169,12 +195,16 @@ export async function generateHomeContent(
   const pillarList = structure.pillars.slice(0, 8).map((p) => serviceShortLabel(p)).join(", ") || "general local services";
   const cityList = structure.uniqueCities.slice(0, 10).map((p) => p.targetArea.split(",")[0].trim()).join(", ");
 
+  const brief = businessBrief(project.description);
+
   const userPrompt = [
-    `Brand: ${b.brandName} (${b.domain}). Phone: ${b.phoneDisplay}. Tagline: ${b.tagline}`,
-    `Services this business offers: ${pillarList}.`,
-    cityList ? `Areas it works in: ${cityList}.` : "",
+    `Brand: ${b.brandName} (${b.domain}). Phone: ${b.phoneDisplay}.`,
+    ...(brief.length ? ["", ...brief, ""] : []),
+    `For topic reference only — the services this business offers: ${pillarList}.`,
+    cityList ? `For topic reference only — areas it works in: ${cityList}.` : "",
     ``,
     `Write natural, user-centered HOMEPAGE copy. Every piece should sound individually written for this business and speak to a real customer's concerns. Absolutely no statistics or bragging numbers.`,
+    `- tagline: a short customer-facing tagline, max 90 characters, used in the browser tab title and footer. Say what the business does and why it is worth calling. It must read as copy aimed at a customer — never repeat any instruction the owner wrote about building the website.`,
     `- heroKicker: a short 3–6 word eyebrow.`,
     `- heroH1: one confident value proposition (NOT a keyword string), max ~9 words.`,
     `- heroLede: one inviting paragraph, 40–70 words.`,
@@ -184,7 +214,7 @@ export async function generateHomeContent(
     `- testimonials: 3 short, realistic customer quotes (1–2 sentences) with a plausible role for "who" (e.g. "Homeowner", "Property manager"). Do NOT invent names.`,
     `- faqs: 3 homepage FAQs a customer would actually ask (timing, cost, trust), answered like a person.`,
     ``,
-    `Return JSON: { "heroKicker": string, "heroH1": string, "heroLede": string, "heroBullets": [string], "sections": { "services": {"eyebrow":string,"heading":string,"blurb":string}, "features": {"eyebrow":string,"heading":string,"blurb":string}, "coverage": {"eyebrow":string,"heading":string,"blurb":string}, "testimonial": {"eyebrow":string,"heading":string}, "comparison": {"eyebrow":string,"heading":string}, "cta": {"heading":string,"body":string} }, "features": [{"title":string,"description":string}], "testimonials": [{"quote":string,"who":string}], "faqs": [{"q":string,"a":string}] }`,
+    `Return JSON: { "tagline": string, "heroKicker": string, "heroH1": string, "heroLede": string, "heroBullets": [string], "sections": { "services": {"eyebrow":string,"heading":string,"blurb":string}, "features": {"eyebrow":string,"heading":string,"blurb":string}, "coverage": {"eyebrow":string,"heading":string,"blurb":string}, "testimonial": {"eyebrow":string,"heading":string}, "comparison": {"eyebrow":string,"heading":string}, "cta": {"heading":string,"body":string} }, "features": [{"title":string,"description":string}], "testimonials": [{"quote":string,"who":string}], "faqs": [{"q":string,"a":string}] }`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -226,7 +256,10 @@ export async function generateHomeContent(
 
     // Validate the essentials; merge whatever the model delivered onto the fallback so we
     // never regress below a complete, natural homepage.
+    const tagline = str(json.tagline);
+
     return {
+      tagline: tagline && tagline.length <= 90 ? tagline : fallback.tagline,
       heroKicker: str(json.heroKicker, fallback.heroKicker),
       heroH1,
       heroLede: WORDS(heroLede) >= 20 ? heroLede : fallback.heroLede,

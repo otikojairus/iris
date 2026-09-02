@@ -24,6 +24,7 @@ import {
   serviceShortLabel,
 } from "@/lib/generate/content";
 import { getAiClient, AI_CONFIG } from "./client";
+import { NO_PSEO_RULE, businessBrief } from "./brief";
 import type { Branding } from "@/lib/generate/generator";
 
 const WORDS = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
@@ -272,6 +273,7 @@ export async function editPageContent(
   b: Branding,
   spec: ContentEditSpec,
   previous?: PageContent,
+  description?: string,
 ): Promise<PageContent> {
   const client = getAiClient();
   if (!client) return templateContentEdit(page, structure, b, spec, previous);
@@ -289,9 +291,11 @@ export async function editPageContent(
   const facts = page.pageType === "City Service Page" ? localFacts(page) : [];
   const location = pageLocation(page);
   const prev = previous || templateContent(page, structure, b);
+  const brief = businessBrief(description);
   const userPrompt = [
     `You are REVISING an existing page for ${b.brandName} (${b.domain}). Phone: ${b.phoneDisplay}.`,
-    `Page type: ${page.pageType}. Primary keyword: ${page.primaryKeyword}. Location: ${location} (target area: ${page.targetArea}).`,
+    ...(brief.length ? ["", ...brief, ""] : []),
+    `Page type: ${page.pageType}. Topic behind the page (not a phrase to repeat): ${page.primaryKeyword}. Location: ${location} (target area: ${page.targetArea}).`,
     `EDIT INSTRUCTIONS:`,
     ...directives.map((d) => `- ${d}`),
     ``,
@@ -362,6 +366,8 @@ VOICE (this matters most):
 - BANNED phrases and clichés — never use these or anything like them: "dependable, well-documented service", "real crews, clear quotes", "across Canada" on every page, "sized to your site", "we pride ourselves", "state-of-the-art", "one-stop shop", "unparalleled", "peace of mind", "look no further", keyword-stuffed sentences.
 - Do NOT repeat the same phrasing across pages. Make each page feel individually written.
 
+${NO_PSEO_RULE}
+
 STRUCTURE (keep intact for SEO, but never let it make the writing robotic):
 - H1: the service + location, phrased naturally. Exactly one H1.
 - Intro: one inviting paragraph, 90–140 words, that speaks to this specific reader and situation.
@@ -424,18 +430,25 @@ function coerceFacts(raw: AiContentJson["cityFacts"]): CityFact[] {
  * Generate AI content for one page. Falls back to templates on any failure or if the
  * result fails validation (too short, too few FAQs, etc.).
  */
-export async function aiPageContent(page: SeoPage, structure: SiteStructure, b: Branding): Promise<PageContent> {
+export async function aiPageContent(
+  page: SeoPage,
+  structure: SiteStructure,
+  b: Branding,
+  description?: string,
+): Promise<PageContent> {
   const client = getAiClient();
   const fallback = templateContent(page, structure, b);
   if (!client) return fallback;
 
   const facts = page.pageType === "City Service Page" ? localFacts(page) : [];
   const location = pageLocation(page);
+  const brief = businessBrief(description);
   const userPrompt = [
-    `Brand: ${b.brandName} (${b.domain}). Phone: ${b.phoneDisplay}. Tagline: ${b.tagline}`,
+    `Brand: ${b.brandName} (${b.domain}). Phone: ${b.phoneDisplay}.`,
+    ...(brief.length ? ["", ...brief, ""] : []),
     `Page type: ${page.pageType}`,
-    `Primary keyword: ${page.primaryKeyword}`,
-    `Secondary keywords: ${page.secondaryKeywords}`,
+    `Target the topic behind this keyword (guidance for what to cover, never a phrase to repeat): ${page.primaryKeyword}`,
+    `Related topics to touch on naturally: ${page.secondaryKeywords}`,
     `Service topic: ${serviceShortLabel(page)}`,
     `Location: ${location} (target area: ${page.targetArea})`,
     `Suggested page label: ${pageListLabel(page)}`,

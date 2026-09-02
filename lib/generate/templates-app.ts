@@ -186,6 +186,14 @@ export function JsonLd({ data }: JsonLdProps) {
 export function renderNavbar(theme: Theme, b: Branding, structure: SiteStructure): string {
   const p = theme.prefix;
   const nav = structure.pillars.slice(0, 4);
+  const variant = 16 + hash(`${b.domain}:navbar`, 3);
+  const modifier = variant === 16 ? "v-hdr-engineering" : variant === 17 ? "v-hdr-dispatch" : "v-hdr-editorial";
+  const preHeader =
+    variant === 16
+      ? `<div className="v-hdr-signal"><div className="${p}-wrap"><span>Local crews / clear scope / direct contact</span><a href={\`tel:\${PHONE_E164}\`}>OPEN LINE · {PHONE_DISPLAY}</a></div></div>`
+      : variant === 18
+        ? `<div className="v-topbar"><div className="${p}-wrap v-topbar-in"><span>{${J(b.tagline)}}</span><a href={\`tel:\${PHONE_E164}\`}>{PHONE_DISPLAY}</a></div></div>`
+        : "";
   return `"use client";
 
 import Image from "next/image";
@@ -215,7 +223,8 @@ export function SiteNavbar() {
 
   return (
     <>
-      <header className="${p}-header">
+      ${preHeader}
+      <header className="${p}-header v-hdr v-hdr-${variant} ${modifier}">
         <div className="${p}-wrap ${p}-nav">
           <Link href="/" className="${p}-brand" aria-label={SITE_NAME} onClick={() => setOpen(false)}>
             <Image src="/logo.svg" alt="${p}logo" width={40} height={40} priority />
@@ -249,15 +258,27 @@ export function SiteNavbar() {
       <div className={\`${p}-drawer \${open ? "${p}-drawer-open" : ""}\`} aria-hidden={!open}>
         <button className="${p}-drawer-shade" type="button" aria-label="Close menu" onClick={() => setOpen(false)} />
         <aside className="${p}-drawer-panel">
+          <div className="v-drawer-head">
+            <Link href="/" className="${p}-brand" aria-label={SITE_NAME} onClick={() => setOpen(false)}>
+              <Image src="/logo.svg" alt="${p} logo" width={40} height={40} />
+              <span className="${p}-brand-name">${b.brandName}</span>
+            </Link>
+            <button className="v-drawer-close" type="button" aria-label="Close menu" onClick={() => setOpen(false)}><span /></button>
+          </div>
+          <p className="v-drawer-label">Explore / ${b.brandName}</p>
           <nav className="${p}-drawer-links" aria-label="Mobile navigation">
-            <Link href="/" onClick={() => setOpen(false)}>Home</Link>
-            <Link href="/services" onClick={() => setOpen(false)}>Services</Link>
-            {SERVICE_PILLARS.map((page) => (
+            <Link href="/" onClick={() => setOpen(false)}><span>01</span>Home</Link>
+            <Link href="/services" onClick={() => setOpen(false)}><span>02</span>All services</Link>
+            {SERVICE_PILLARS.map((page, index) => (
               <Link key={page.pageSlug} href={toPath(page.pageSlug)} onClick={() => setOpen(false)}>
-                {serviceShortLabel(page)}
+                <span>{String(index + 3).padStart(2, "0")}</span>{serviceShortLabel(page)}
               </Link>
             ))}
           </nav>
+          <div className="v-drawer-foot">
+            <p>{${J(b.tagline)}}</p>
+            <a className="${p}-call" href={\`tel:\${PHONE_E164}\`}>Call {PHONE_DISPLAY}</a>
+          </div>
         </aside>
       </div>
 

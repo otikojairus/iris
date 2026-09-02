@@ -72,14 +72,21 @@ export async function POST(req: NextRequest) {
   try {
     const result = await Promise.race([
       Promise.all([
-        generateProjectContent({ pages: project.pages, branding: project.branding }),
-        generateHomeContent({ pages: project.pages, branding: project.branding }),
+        generateProjectContent({ pages: project.pages, branding: project.branding, description: project.prompt }),
+        generateHomeContent({ pages: project.pages, branding: project.branding, description: project.prompt }),
       ]),
       new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), 30_000)),
     ]);
     if (result !== TIMED_OUT) {
       const [{ contentBySlug }, homeContent] = result;
-      project = { ...project, contentBySlug, homeContent };
+      // The tagline is customer-facing (page titles, meta descriptions, the footer), so
+      // prefer the written one over the placeholder derived from the raw description.
+      project = {
+        ...project,
+        contentBySlug,
+        homeContent,
+        branding: { ...project.branding, tagline: homeContent.tagline || project.branding.tagline },
+      };
     }
     // On timeout we save without AI copy; the live host and export fall back to
     // on-the-fly template content, so the project is never left half-generated.

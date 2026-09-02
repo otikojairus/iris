@@ -5,6 +5,8 @@
 import { parsePlan, inferBrandFromFile } from "@/lib/parse-plan";
 import { hashThemeId } from "@/lib/generate/themes";
 import { generateSite } from "@/lib/generate/generator";
+import { deriveStructure } from "@/lib/generate/content";
+import { templateTagline } from "@/lib/ai/home-content";
 import type { Project } from "@/lib/types";
 
 export type CreateInput = {
@@ -53,7 +55,7 @@ export function buildProjectFromUpload(input: CreateInput): BuildResult {
     phoneDisplay: phone,
     phoneE164: `+1${phone.replace(/\D/g, "") || "8880000000"}`,
     accentColor,
-    tagline: input.prompt.slice(0, 90) || "Dependable service across Canada.",
+    tagline: templateTagline(deriveStructure(parsed.pages), { brandName, domain }),
   };
 
   let files: Project["files"] = [];
