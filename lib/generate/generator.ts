@@ -36,6 +36,7 @@ import {
 import { renderIrisTrack } from "./iris-track";
 import { irisPublicUrl } from "@/lib/track-origin";
 import { buildPreviewHtml } from "./preview";
+import { renderIrisStageModule, renderSiteChrome, renderStageHtml, type ExportStage } from "./stage-export";
 
 export type Branding = {
   brandName: string;
@@ -70,7 +71,10 @@ const FILE_ORDER: Array<{ path: string; kind: "dir" | "file"; language?: string 
   { path: "components/site-navbar.tsx", kind: "file", language: "tsx" },
   { path: "components/site-footer.tsx", kind: "file", language: "tsx" },
   { path: "components/iris-track.tsx", kind: "file", language: "tsx" },
+  { path: "components/stage-html.tsx", kind: "file", language: "tsx" },
+  { path: "components/site-chrome.tsx", kind: "file", language: "tsx" },
   { path: "lib", kind: "dir" },
+  { path: "lib/iris-stage.ts", kind: "file", language: "ts" },
   { path: "lib/pages.json", kind: "file", language: "json" },
   { path: "lib/generated-pages.ts", kind: "file", language: "ts" },
   { path: "lib/city-facts.ts", kind: "file", language: "ts" },
@@ -95,7 +99,7 @@ export function generateSite(
   project: Pick<Project, "id" | "pages" | "branding"> & Partial<Pick<Project, "contentBySlug" | "variants" | "homeContent" | "trackKey">>,
   themeId: string,
   seed = 0,
-  opts?: { trackOrigin?: string },
+  opts?: { trackOrigin?: string; stage?: ExportStage },
 ): GeneratedSite {
   const pages = project.pages ?? [];
   const branding: Branding = {
@@ -112,6 +116,9 @@ export function generateSite(
   const composition = compose(`${project.id || "project"}:${themeId}:${seed}`);
   const trackOrigin = (opts?.trackOrigin || irisPublicUrl()).replace(/\/+$/, "");
   const trackKey = project.trackKey || "";
+  const stage = opts?.stage;
+  const logoSvg = stage?.logoSvg?.trim() ? stage.logoSvg.trim() : renderLogo(theme, b.brandName);
+  const css = renderCss(theme) + (stage?.extraCss?.trim() ? `\n\n/* iris staged overrides */\n${stage.extraCss.trim()}\n` : "");
 
   const files: Record<string, string> = {
     "package.json": renderPackageJson(b),
@@ -123,7 +130,8 @@ export function generateSite(
     "docker-compose.yml": renderDockerCompose(b),
     ".gitignore": renderGitignore(),
     "README.md": renderReadme(b, structure.pageCount, trackOrigin),
-    "public/logo.svg": renderLogo(theme, b.brandName),
+    "public/logo.svg": logoSvg,
+    "lib/iris-stage.ts": renderIrisStageModule(stage, project.id || ""),
     "lib/pages.json": renderPagesJson(pages),
     "lib/generated-pages.ts": renderGeneratedPages(),
     "lib/city-facts.ts": renderCityFacts(structure.cityPages),
@@ -139,7 +147,9 @@ export function generateSite(
     "components/site-navbar.tsx": renderNavbar(theme, b, structure),
     "components/site-footer.tsx": renderFooter(theme, b, structure),
     "components/iris-track.tsx": renderIrisTrack(trackOrigin, trackKey),
-    "app/globals.css": renderCss(theme),
+    "components/stage-html.tsx": renderStageHtml(),
+    "components/site-chrome.tsx": renderSiteChrome(),
+    "app/globals.css": css,
     "app/layout.tsx": renderLayout(theme, b, Boolean(trackOrigin && trackKey)),
     "app/page.tsx": renderHomePage(theme, b, structure, composition, project.homeContent),
     "app/services/page.tsx": renderServicesPage(theme, b, structure),

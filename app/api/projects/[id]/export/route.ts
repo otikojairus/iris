@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
 import { buildSiteFiles, readProject } from "@/lib/server/store";
 import { ensureProjectTrackKey } from "@/lib/server/analytics";
+import { readStage } from "@/lib/server/stage";
 import { originFromRequest } from "@/lib/track-origin";
 import { requireAuth } from "@/lib/server/require-auth";
 
@@ -17,7 +18,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const project = await ensureProjectTrackKey(existing);
 
-  const files = buildSiteFiles(project, { trackOrigin: originFromRequest(req) });
+  const files = buildSiteFiles(project, {
+    trackOrigin: originFromRequest(req),
+    stage: await readStage(project.id),
+  });
   const zip = new JSZip();
   for (const [path, content] of Object.entries(files)) zip.file(path, content);
   const blob = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });

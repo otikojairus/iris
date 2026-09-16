@@ -382,6 +382,8 @@ export function renderHomePage(theme: Theme, b: Branding, structure: SiteStructu
 import Image from "next/image";
 import Link from "next/link";
 import { JsonLd } from "@/components/json-ld";
+import { StageHtml } from "@/components/stage-html";
+import { STAGE } from "@/lib/iris-stage";
 ${imagesImport}
 ${siteDataImport}
 import { breadcrumbSchema } from "@/lib/schema";
@@ -404,6 +406,28 @@ export const metadata: Metadata = {
 };
 
 export default function HomePage() {
+  const staged = STAGE.pages["/"] || {};
+  if (staged.main) {
+    return (
+      <>
+        <JsonLd
+          data={[
+            breadcrumbSchema([{ name: "Home", path: "/" }]),
+            {
+              "@context": "https://schema.org",
+              "@type": "FAQPage",
+              mainEntity: homeFaqs.map((faq) => ({
+                "@type": "Question",
+                name: faq.q,
+                acceptedAnswer: { "@type": "Answer", text: faq.a },
+              })),
+            },
+          ]}
+        />
+        <StageHtml html={staged.main} />
+      </>
+    );
+  }
   return (
     <main className="${p}-main">
       <JsonLd
@@ -421,7 +445,11 @@ export default function HomePage() {
         ]}
       />
 
+      {staged.hero ? <StageHtml html={staged.hero} /> : (
+        <>
       ${hero}
+        </>
+      )}
       ${sections}
     </main>
   );
@@ -435,8 +463,7 @@ export function renderLayout(theme: Theme, b: Branding, track = false): string {
   const mono = theme.mono ? fontJsName(theme.mono) : null;
   return `import type { Metadata } from "next";
 ${fontImports(theme)}
-import { SiteFooter } from "@/components/site-footer";
-import { SiteNavbar } from "@/components/site-navbar";
+import { SiteFoot, SiteHeader } from "@/components/site-chrome";
 ${track ? `import { IrisTrack } from "@/components/iris-track";\n` : ""}import { SITE_NAME, absoluteUrl, getSiteUrl } from "@/lib/site-data";
 import "./globals.css";
 
@@ -462,9 +489,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en-CA" className={\`\${${d}.variable} \${${body}.variable}${mono ? ` \${${mono}.variable}` : ""}\`}>
       <body>
-        <SiteNavbar />
+        <SiteHeader />
         {children}
-        <SiteFooter />
+        <SiteFoot />
         ${track ? "<IrisTrack />" : ""}
       </body>
     </html>
@@ -479,6 +506,8 @@ export function renderServicesPage(theme: Theme, b: Branding, structure: SiteStr
 import Image from "next/image";
 import Link from "next/link";
 import { JsonLd } from "@/components/json-ld";
+import { StageHtml } from "@/components/stage-html";
+import { STAGE } from "@/lib/iris-stage";
 import { SERVICES_HERO, pillarCardImage } from "@/lib/images";
 import {
   EMERGENCY_PAGES, PHONE_DISPLAY, PHONE_E164, SEO_PAGES, SERVICE_PAGES, SERVICE_PILLARS,
@@ -499,8 +528,13 @@ export const metadata: Metadata = {
 };
 
 export default function ServicesPage() {
+  const staged = STAGE.pages["/services"] || {};
+  if (staged.main) {
+    return <StageHtml html={staged.main} />;
+  }
   return (
     <main className="${p}-main ${p}-page">
+      {staged.hero ? <StageHtml html={staged.hero} /> : null}
       <JsonLd
         data={[
           breadcrumbSchema([
@@ -643,6 +677,8 @@ export function renderSlugPage(theme: Theme, b: Branding, structure: SiteStructu
 import Image from "next/image";
 import Link from "next/link";
 import { JsonLd } from "@/components/json-ld";
+import { StageHtml } from "@/components/stage-html";
+import { STAGE } from "@/lib/iris-stage";
 import { heroImageFor } from "@/lib/images";
 import {
   PHONE_DISPLAY, PHONE_E164, SEO_PAGES, SITE_NAME, SeoPage,
@@ -808,6 +844,15 @@ export default async function DynamicSeoPage({ params }: Props) {
   const schema = serviceSchema
     ? [pageBreadcrumb(page), faqSchema(page), ...serviceSchema]
     : [pageBreadcrumb(page), faqSchema(page)];
+  const staged = STAGE.pages[page.pageSlug] || STAGE.pages["/" + slug] || {};
+  if (staged.main) {
+    return (
+      <>
+        <JsonLd data={schema} />
+        <StageHtml html={staged.main} />
+      </>
+    );
+  }
 
   return (
     <main className="${p}-main ${p}-page">
@@ -816,6 +861,7 @@ export default async function DynamicSeoPage({ params }: Props) {
         <Breadcrumbs page={page} />
       </div>
 
+      {staged.hero ? <StageHtml html={staged.hero} /> : (
       <section className="${p}-page-head">
         <div className="${p}-wrap ${p}-split">
           <div>
@@ -832,6 +878,7 @@ export default async function DynamicSeoPage({ params }: Props) {
           </div>
         </div>
       </section>
+      )}
 
       <div className="${p}-wrap">
         <EmergencyBanner page={page} />

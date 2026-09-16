@@ -34,6 +34,16 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+/** Load stage.json if present (chat HTML/CSS/SVG overlays). */
+async function loadStage(id: string): Promise<import("@/lib/generate/stage-export").ExportStage | undefined> {
+  try {
+    const raw = JSON.parse(await fs.readFile(path.join(projectDir(id), "stage.json"), "utf8")) as import("@/lib/generate/stage-export").ExportStage;
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Persist the project JSON and (re)write its generated site source tree to disk. */
 export async function saveProject(project: Project): Promise<Project> {
   const next = withTrackKey(project);
@@ -51,6 +61,7 @@ export async function writeSiteFiles(project: Project): Promise<void> {
   try {
     const site = generateSite(project, project.themeId || "slate", project.layoutSeed || 0, {
       trackOrigin: irisPublicUrl(),
+      stage: await loadStage(project.id),
     });
     await Promise.all(
       Object.entries(site.files).map(async ([rel, content]) => {
@@ -107,8 +118,12 @@ export async function deleteProject(id: string): Promise<boolean> {
 }
 
 /** Regenerate the in-memory file map for export (does not touch disk). */
-export function buildSiteFiles(project: Project, opts?: { trackOrigin?: string }): Record<string, string> {
+export function buildSiteFiles(
+  project: Project,
+  opts?: { trackOrigin?: string; stage?: import("@/lib/generate/stage-export").ExportStage },
+): Record<string, string> {
   return generateSite(project, project.themeId || "slate", project.layoutSeed || 0, {
     trackOrigin: opts?.trackOrigin || irisPublicUrl(),
+    stage: opts?.stage,
   }).files;
 }
