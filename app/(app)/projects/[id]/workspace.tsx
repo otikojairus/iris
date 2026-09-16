@@ -180,8 +180,8 @@ export function Workspace({ project }: { project: Project }) {
                 generating
                   ? "Iris is generating your site…"
                   : previewPath === "/"
-                    ? "Ask Iris to tweak this page — copy, colors, sections…"
-                    : `Ask Iris to tweak ${previewPath} — copy, colors, sections…`
+                    ? "Ask Iris to edit this page — copy, logo, header, CSS…"
+                    : `Ask Iris to edit ${previewPath} — copy, logo, header, CSS…`
               }
               value={draft}
               disabled={generating}

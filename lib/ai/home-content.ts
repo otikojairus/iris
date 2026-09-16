@@ -5,14 +5,14 @@
 // natural, user-centered value proposition, section blurbs, "why us" points, realistic
 // testimonials, and homepage FAQs — with NO pSEO stats or keyword-stuffed statements.
 //
-// When OPENAI_API_KEY is set the copy is written by GPT; otherwise a deterministic,
-// per-brand template fallback keeps every site unique without a key.
+// When ANTHROPIC_API_KEY or OPENAI_API_KEY is set the copy is written by the model;
+// otherwise a deterministic, per-brand template fallback keeps every site unique without a key.
 
 import type { FaqItem, HomeContent, SeoPage } from "@/lib/types";
 import type { SiteStructure } from "@/lib/generate/content";
 import { deriveStructure, serviceShortLabel } from "@/lib/generate/content";
 import type { Branding } from "@/lib/generate/generator";
-import { getAiClient, AI_CONFIG } from "./client";
+import { completeJson, isAiEnabled } from "./client";
 import { NO_PSEO_RULE, businessBrief } from "./brief";
 
 const WORDS = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
@@ -181,7 +181,7 @@ type HomeJson = {
 
 const str = (v: unknown, fb = ""): string => (typeof v === "string" && v.trim() ? v.trim() : fb);
 
-/** Generate homepage copy via GPT, falling back to templates on any failure/underdelivery. */
+/** Generate homepage copy via Claude or GPT, falling back to templates on any failure/underdelivery. */
 export async function generateHomeContent(
   project: { pages: SeoPage[]; branding: Branding; description?: string },
 ): Promise<HomeContent> {
@@ -189,8 +189,7 @@ export async function generateHomeContent(
   const b = project.branding;
   const fallback = templateHomeContent(structure, b);
 
-  const client = getAiClient();
-  if (!client) return fallback;
+  if (!isAiEnabled()) return fallback;
 
   const pillarList = structure.pillars.slice(0, 8).map((p) => serviceShortLabel(p)).join(", ") || "general local services";
   const cityList = structure.uniqueCities.slice(0, 10).map((p) => p.targetArea.split(",")[0].trim()).join(", ");
@@ -220,17 +219,11 @@ export async function generateHomeContent(
     .join("\n");
 
   try {
-    const completion = await client.chat.completions.create({
-      model: AI_CONFIG.model,
+    const json = await completeJson<HomeJson>({
+      system: SYSTEM_PROMPT,
+      user: userPrompt,
       temperature: 0.85,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
     });
-    const raw = completion.choices[0]?.message?.content || "{}";
-    const json = JSON.parse(raw) as HomeJson;
 
     const bullets = (Array.isArray(json.heroBullets) ? json.heroBullets : [])
       .map((x) => str(x))

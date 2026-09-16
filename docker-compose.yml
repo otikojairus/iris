@@ -12,8 +12,11 @@ services:
       HOSTNAME: 0.0.0.0
       # Where generated projects + site source are persisted (mounted volume below).
       IRIS_DATA_DIR: /data
-      # GPT is supplied at runtime via the environment. Leave OPENAI_API_KEY empty to
-      # run fully on the deterministic prebuilt-component engine (no AI calls).
+      # Claude / GPT are supplied at runtime via the environment. Leave both keys empty
+      # to run fully on the deterministic prebuilt-component engine (no AI calls).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      IRIS_AI_PROVIDER: ${IRIS_AI_PROVIDER:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}

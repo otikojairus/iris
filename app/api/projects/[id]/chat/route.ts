@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readProject, saveProject } from "@/lib/server/store";
 import { interpretEdit, CURRENT_PAGE_QUERY, type ContentEdit, type EditContext } from "@/lib/ai/editor";
+import { applyCodeEdit, isCodeEditRequest } from "@/lib/ai/code-edit";
 import { editPageContent } from "@/lib/ai/content";
 import { generateHomeContent } from "@/lib/ai/home-content";
-import { isAiEnabled } from "@/lib/ai/client";
+import { isAiEnabled, aiSetupHint } from "@/lib/ai/client";
 import { deriveStructure, cityFromTargetArea, pageListLabel, serviceShortLabel } from "@/lib/generate/content";
 import type { Branding } from "@/lib/generate/generator";
 import { requireAuth } from "@/lib/server/require-auth";
@@ -94,7 +95,10 @@ function stagedContext(project: Project, rawPath?: string): EditContext {
   const slug = previewSlug(project.id, rawPath);
   if (!slug) return {};
   if (slug === "/") return { currentSlug: "/", currentLabel: "the homepage" };
-  if (!project.pages.some((pg) => pg.pageSlug === slug)) return {};
+  if (slug === "/services") return { currentSlug: "/services", currentLabel: "the services index" };
+  if (!project.pages.some((pg) => pg.pageSlug === slug)) {
+    return { currentSlug: slug, currentLabel: slug };
+  }
   return { currentSlug: slug, currentLabel: labelForSlug(project, slug) };
 }
 
@@ -134,7 +138,7 @@ async function applyContentEdit(project: Project, edit: ContentEdit): Promise<Co
         reply:
           home.source === "ai"
             ? "Done — I rewrote the homepage copy (hero, section intros, and FAQs) to feel more natural and customer-focused."
-            : "I refreshed the homepage copy. Add an OpenAI API key to have it rewritten by GPT for a more tailored result.",
+            : `I refreshed the homepage copy. Add ${aiSetupHint()} to have Claude rewrite it for a more tailored result.`,
       };
     }
     targets = matchPages(project, edit.query);
@@ -221,8 +225,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // What the user is looking at in the staged preview — unnamed edits target this page.
   const staged = stagedContext(project, body.currentPath);
-  const { patch, reply, source } = await interpretEdit(project, message, staged);
   const aiEnabled = isAiEnabled();
+
+  // Visual/code requests patch the staged HTML/CSS/SVG overlay. Do not fall through
+  // to variant reshuffles (that is what made "redesign the logo" swap the header).
+  if (isCodeEditRequest(message)) {
+    let codeReply: string;
+    let ok = false;
+    try {
+      const result = await applyCodeEdit(project, message, staged);
+      ok = result.ok;
+      codeReply = result.reply;
+    } catch {
+      codeReply = "I couldn't patch the staged HTML that time. Try naming the section (logo, header, hero) and I'll edit its code.";
+    }
+
+    const assistantMsg: ChatMessage = {
+      id: `a-${Date.now() + 1}`,
+      role: "assistant",
+      content: codeReply,
+      createdAt: now,
+      event: {
+        stage: "ready",
+        label: ok ? "Applied staged code edit" : "No code change made",
+      },
+    };
+    const saved = await saveProject({
+      ...project,
+      updatedAt: now,
+      messages: [...project.messages, userMsg, assistantMsg],
+    });
+    return NextResponse.json({
+      project: saved,
+      message: assistantMsg,
+      aiEnabled,
+      changed: staged.currentSlug ? [staged.currentSlug] : [],
+      designChanged: ok,
+    });
+  }
+
+  const { patch, reply, source } = await interpretEdit(project, message, staged);
 
   // Resolve the "page I'm looking at" placeholder into a real target.
   if (patch.contentEdit?.query === CURRENT_PAGE_QUERY) {
@@ -269,7 +311,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               })();
       const keyNote = aiEnabled
         ? ""
-        : " I refreshed the copy with the built-in writer — richer AI rewrites need an OPENAI_API_KEY, but the structure and tone tweak were applied.";
+        : ` I refreshed the copy with the built-in writer — richer AI rewrites need ${aiSetupHint()}, but the structure and tone tweak were applied.`;
       notes.push(`rewrote ${what} on ${scopeText}.${keyNote}`);
     }
   }

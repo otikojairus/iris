@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readProject } from "@/lib/server/store";
 import { findPageBySlug, renderHostHome, renderHostPage, renderHostServices } from "@/lib/server/host-render";
+import { applyStageToHtml, readStage } from "@/lib/server/stage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,16 +25,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const segments = slug || [];
   let html: string;
+  let pageSlug = "/";
 
   if (segments.length === 0) {
     html = renderHostHome(project);
   } else if (segments.length === 1 && segments[0] === "services") {
     html = renderHostServices(project);
+    pageSlug = "/services";
   } else {
     const page = findPageBySlug(project, segments.join("/"));
     if (!page) return notFound("Page not found on this site");
     html = renderHostPage(project, page);
+    pageSlug = page.pageSlug.startsWith("/") ? page.pageSlug : `/${page.pageSlug}`;
   }
+
+  const stage = await readStage(project.id);
+  html = applyStageToHtml(html, stage, pageSlug);
 
   return new NextResponse(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },

@@ -143,11 +143,16 @@ export const MICRO_HOME_SECTIONS = [
 ] as const;
 const FAQ_VARIANTS = ["faq-grid", "faq-accordion"];
 
+export const SITE_FEELS = ["quiet", "atelier", "gallery", "ledger"] as const;
+export type SiteFeel = (typeof SITE_FEELS)[number];
+
 export type VariantPlan = {
   header: string;
   footer: string;
   hero: string;
   faq: string;
+  /** Visual dialect so two sites almost never share the same section language. */
+  feel: SiteFeel;
   /** Ordered homepage sections with band assignment. */
   homeSections: Array<{ id: string; band: "soft" | "dark" }>;
 };
@@ -162,30 +167,26 @@ export function planVariants(
   const footer = overrides?.footer || pickFrom(rng, FOOTER_VARIANTS);
   const hero = overrides?.hero || pickFrom(rng, HERO_VARIANTS);
   const faq = pickFrom(rng, FAQ_VARIANTS);
+  const feel = pickFrom(rng, [...SITE_FEELS]);
 
-  const servicesStyle = rng() < 0.5 ? "services-grid" : "services-rows";
-  const optional = shuffleWith(rng, OPTIONAL_HOME_SECTIONS).slice(0, 2 + Math.floor(rng() * 2));
-  const micro = shuffleWith(rng, [...MICRO_HOME_SECTIONS]).slice(0, 3 + Math.floor(rng() * 3));
+  const servicesStyle = rng() < 0.5 ? "services" : rng() < 0.5 ? "services-grid" : "services-rows";
+  const optional = shuffleWith(rng, OPTIONAL_HOME_SECTIONS).slice(0, 1 + Math.floor(rng() * 3));
+  const micro = shuffleWith(rng, [...MICRO_HOME_SECTIONS]).slice(0, 3 + Math.floor(rng() * 4));
 
-  // Split compact pieces across the page instead of appending a recognizable block.
-  // The seed keeps the result stable for a project while layoutSeed reshuffles it.
-  const firstBreak = 1 + Math.floor(rng() * 2);
-  const secondBreak = Math.min(micro.length, firstBreak + 1 + Math.floor(rng() * 2));
-  const ids = [
-    "logos-strip",
-    ...micro.slice(0, firstBreak),
-    servicesStyle,
-    ...micro.slice(firstBreak, secondBreak),
-    ...optional,
-    ...micro.slice(secondBreak),
-    "coverage-tiles",
-    faq,
-    "cta-band",
-  ];
+  const majors = [servicesStyle, ...optional, "coverage"];
+  const opening: string[] = [];
+  if (rng() < 0.4) opening.push("logos-strip");
+  else if (micro.length && rng() < 0.7) opening.push(micro.shift()!);
 
-  // Assign alternating-ish bands, avoiding two darks in a row. Call-to-action and
-  // alert strips default to dark, but flip to soft if the previous band was already
-  // dark so the section rhythm never shows two dark bands back to back.
+  const ids: string[] = [...opening];
+  while (majors.length || micro.length) {
+    const takeMajor = majors.length > 0 && (micro.length === 0 || rng() < 0.52);
+    if (takeMajor) ids.push(majors.shift()!);
+    else ids.push(micro.shift()!);
+  }
+  if (rng() < 0.72) ids.push(faq, "cta-band");
+  else ids.push("cta-band", faq);
+
   const homeSections: Array<{ id: string; band: "soft" | "dark" }> = [];
   let lastDark = false;
   for (const id of ids) {
@@ -195,12 +196,12 @@ export function planVariants(
     } else if (id === "logos-strip" || MICRO_HOME_SECTIONS.includes(id as (typeof MICRO_HOME_SECTIONS)[number])) {
       band = "soft";
     } else {
-      band = !lastDark && rng() < 0.32 ? "dark" : "soft";
+      band = !lastDark && rng() < 0.28 ? "dark" : "soft";
     }
     homeSections.push({ id, band });
     lastDark = band === "dark";
   }
-  return { header, footer, hero, faq, homeSections };
+  return { header, footer, hero, faq, feel, homeSections };
 }
 
 /** Deterministically choose an interior-page hero + faq style for a given page. */
@@ -209,6 +210,23 @@ export function planInterior(seedStr: string, overrides?: { hero?: string }): { 
   return {
     hero: overrides?.hero || pickFrom(rng, INTERIOR_HEROES),
     faq: pickFrom(rng, FAQ_VARIANTS),
+  };
+}
+
+export type InteriorFlow = {
+  intro: "split" | "stack" | "editorial";
+  prose: "standard" | "columns" | "rule";
+  facts: "grid" | "strip";
+  eyebrow: "plain" | "none" | "index";
+};
+
+export function planInteriorFlow(seedStr: string): InteriorFlow {
+  const rng = mulberry32(hashStr(seedStr + ":flow"));
+  return {
+    intro: pickFrom(rng, ["split", "stack", "editorial"]),
+    prose: pickFrom(rng, ["standard", "columns", "rule"]),
+    facts: pickFrom(rng, ["grid", "strip"]),
+    eyebrow: pickFrom(rng, ["plain", "none", "index"]),
   };
 }
 
@@ -476,6 +494,7 @@ export type SectionPayload = {
    * section's family (services/faq/cta/testimonial/coverage/feature). Vary it per site
    * (and per section role) to get different-looking sites that stay stable per seed.
    */
+  layout?: string;
   styleSeed?: string;
 };
 
@@ -1017,7 +1036,8 @@ export function renderSection(ctx: VCtx, id: string, payload: SectionPayload = {
     case "prose": {
       const section = payload.section;
       if (!section) return "";
-      return wrap(`<div class="${p}-prose">${section.paragraphs.map((x) => `<p>${esc(x)}</p>`).join("")}</div>`);
+      const extra = payload.layout === "columns" ? " v-prose-columns" : payload.layout === "rule" ? " v-prose-rule" : "";
+      return wrap(`<div class="${p}-prose${extra}">${section.paragraphs.map((x) => `<p>${esc(x)}</p>`).join("")}</div>`);
     }
     case "alert-strip":
       return `<section class="${p}-section ${p}-section-dark v-sec v-sec-alert"><div class="${p}-wrap"><div class="${p}-alert"><div><strong>Need someone quickly?</strong><p>We keep a crew free for urgent jobs — call and we'll tell you honestly when we can be there.</p></div><a class="${p}-call" href="tel:${esc(
@@ -1259,7 +1279,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hero-gradient-copy { background: linear-gradient(150deg, var(--${p}-primary), var(--${p}-primary-deep)); color: #fff; padding: 2.4rem; border-radius: ${radiusCard}px; }
 .v-hero-gradient-copy h1, .v-hero-gradient-copy .v-hero-h1 { color: #fff; }
 .v-hero-gradient-copy .${p}-hero-lede { color: rgba(255,255,255,0.86); }
-.v-hero-gradient-copy .${p}-kicker { color: #fff; }
+.v-hero-gradient-copy .${p}-kicker, .v-hero-gradient-copy .${p}-hero-status li { color: rgba(255,255,255,0.86); }
 .v-hero-gradient-media .${p}-hero-panel { min-height: 320px; }
 
 /* Hero: offset (10) */
@@ -1300,10 +1320,10 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-field-frame img { width: 100%; height: 520px; object-fit: cover; filter: grayscale(1) contrast(1.08); }
 .v-field-tag { position: absolute; left: 0; bottom: 0; z-index: 2; max-width: 72%; display: grid; gap: 0.25rem; padding: 1rem 1.2rem; background: var(--${p}-accent); color: var(--${p}-dark); }
 .v-field-tag span, .v-depth-card span, .v-depth-card small { font-family: ${mono}; font-size: 0.62rem; letter-spacing: 0.09em; }
-.v-depth-card { position: absolute; z-index: 3; right: -22px; top: 62px; width: 132px; padding: 0.9rem; background: var(--${p}-primary); color: #fff; box-shadow: -9px 9px 0 var(--${p}-accent); }
+.v-depth-card { position: absolute; z-index: 3; right: 14px; top: 62px; width: 132px; padding: 0.9rem; background: var(--${p}-primary); color: var(--${p}-on-primary); box-shadow: var(--${p}-shadow-lift); }
 .v-depth-card i { display: block; height: 90px; margin: 0.55rem 50% 0.55rem 0; border-right: 1px dashed rgba(255,255,255,0.75); }
 .v-depth-card strong, .v-depth-card small { display: block; }
-.v-bore-strip { position: absolute; left: -4%; right: -4%; bottom: 30px; display: flex; gap: 5rem; transform: rotate(-1deg); opacity: 0.55; }
+.v-bore-strip { position: absolute; left: 0; right: 0; bottom: 30px; display: flex; gap: 5rem; transform: rotate(-1deg); opacity: 0.55; }
 .v-bore-strip i { flex: 1; height: 16px; border: 2px solid var(--${p}-accent); border-radius: 50%; }
 
 /* Hero: night dispatch (17) */
@@ -1322,9 +1342,9 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hero-editorial { min-height: 680px; overflow: hidden; background: radial-gradient(circle at 84% 14%, var(--${p}-primary-soft), transparent 30%), var(--${p}-bg); }
 .v-dot-atmosphere { position: absolute; inset: 0; opacity: 0.5; background-image: radial-gradient(color-mix(in srgb, var(--${p}-ink) 12%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
 .v-hero-editorial h1, .v-hero-editorial .v-hero-h1 { font-size: clamp(2.8rem, 6vw, 5.6rem); line-height: 0.95; letter-spacing: -0.055em; }
-.v-editorial-stage { position: relative; min-height: 520px; }
+.v-editorial-stage { position: relative; min-height: 520px; overflow: hidden; }
 .v-editorial-stage > img { width: 100%; height: 520px; object-fit: cover; border-radius: 30px 30px 92px 30px; box-shadow: var(--${p}-shadow-lift); }
-.v-work-ticket { position: absolute; left: -28px; bottom: 28px; width: min(300px, calc(100% - 2rem)); padding: 1.2rem; border-radius: 18px; border-top: 5px solid var(--${p}-accent); background: var(--${p}-dark); color: var(--${p}-dark-text); box-shadow: var(--${p}-shadow-lift); }
+.v-work-ticket { position: absolute; left: 16px; bottom: 16px; width: min(300px, calc(100% - 2rem)); padding: 1.2rem; border-radius: 18px; border-top: 5px solid var(--${p}-accent); background: var(--${p}-dark); color: var(--${p}-dark-text); box-shadow: var(--${p}-shadow-lift); }
 .v-work-ticket > span { font-family: ${mono}; font-size: 0.68rem; letter-spacing: 0.12em; color: var(--${p}-accent); }
 .v-work-ticket > strong { display: block; margin: 0.4rem 0 0.8rem; font-family: ${display}; font-size: 1.2rem; }
 .v-work-ticket p { display: grid; grid-template-columns: 32px 1fr; gap: 0.65rem; margin: 0; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.13); color: var(--${p}-dark-muted); }
@@ -1444,7 +1464,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-hdr-9 .v-hdr-ctas { padding-left: 1rem; border-left: 1px solid var(--${p}-line-strong); }
 .v-hdr-10 .${p}-nav { padding-block: 0.75rem; }
 .v-hdr-10 .${p}-links { padding-top: 0.65rem; border-top: 1px solid var(--${p}-line); }
-.v-hdr-11 { position: absolute; left: 0; right: 0; color: #fff; }
+.v-hdr-11 { position: sticky; left: 0; right: 0; background: color-mix(in srgb, var(--${p}-dark) 92%, transparent); border-bottom: 1px solid rgba(255,255,255,0.12); }
 .v-hdr-11 .${p}-brand-name, .v-hdr-11 .${p}-links a { color: #fff; }
 .v-hdr-11 .${p}-nav { min-height: 86px; }
 .v-hdr-11 .${p}-call { border: 1px solid rgba(255,255,255,0.4); }
@@ -1596,7 +1616,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 /* Services: pills (6) */
 .v-svc-pills { display: flex; flex-wrap: wrap; gap: 0.7rem; }
 .v-svc-pill { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-radius: 999px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); font-weight: 600; transition: all 0.16s ease; }
-.v-svc-pill:hover { background: var(--${p}-primary); color: #fff; border-color: var(--${p}-primary); }
+.v-svc-pill:hover { background: var(--${p}-primary); color: var(--${p}-on-primary); border-color: var(--${p}-primary); }
 .v-svc-pill span { color: var(--${p}-primary); }
 .v-svc-pill:hover span { color: #fff; }
 
@@ -1645,7 +1665,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-feat-n { font-family: ${display}; font-weight: 700; font-size: 1.6rem; color: var(--${p}-primary); line-height: 1; }
 .v-feat-checklist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
 .v-feat-checklist li { display: grid; grid-template-columns: auto 1fr; gap: 0.8rem; align-items: start; }
-.v-feat-check { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--${p}-primary); color: #fff; font-size: 0.8rem; flex: none; }
+.v-feat-check { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--${p}-primary); color: var(--${p}-on-primary); font-size: 0.8rem; flex: none; }
 .v-feat-checklist strong { display: block; }
 .v-feat-checklist span { color: var(--${p}-ink-soft); font-size: 0.93rem; }
 .v-feat-rows { display: grid; gap: 0; }
@@ -1716,11 +1736,11 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-cta-bordered { border: 2px dashed var(--${p}-line-strong); border-radius: ${radiusCard}px; padding: 2.4rem; text-align: center; display: grid; justify-items: center; gap: 0.8rem; }
 .v-cta-actions { display: grid; gap: 0.6rem; justify-items: start; }
 .v-cta-note { font-size: 0.85rem; color: var(--${p}-dark-muted); }
-.v-cta-11 { background: var(--${p}-accent); }
+.v-cta-11 { background: var(--${p}-accent); color: var(--${p}-on-accent); }
 .v-cta-bar { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; padding: 1.6rem 1.25rem; }
-.v-cta-bar strong { display: block; font-family: ${display}; font-size: 1.3rem; color: #0b0f19; }
-.v-cta-bar span { color: rgba(11,15,25,0.72); }
-.v-cta-bar .${p}-call { background: #0b0f19; color: #fff; }
+.v-cta-bar strong { display: block; font-family: ${display}; font-size: 1.3rem; color: var(--${p}-on-accent); }
+.v-cta-bar span { color: color-mix(in srgb, var(--${p}-on-accent) 78%, transparent); }
+.v-cta-bar .${p}-call { background: var(--${p}-ink); color: #fff; }
 
 /* Testimonial families */
 .v-tst-big { max-width: 860px; margin: 0 auto; text-align: center; }
@@ -1744,7 +1764,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-tst-chip { flex: 0 0 300px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: ${radiusCard}px; padding: 1.3rem; margin: 0; }
 .v-tst-chip figcaption { margin-top: 0.6rem; font-size: 0.88rem; color: var(--${p}-primary); font-weight: 600; }
 .v-tst-lead { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem; align-items: start; }
-.v-tst-leadmain { background: var(--${p}-primary); color: #fff; border-radius: ${radiusCard}px; padding: 2rem; margin: 0; }
+.v-tst-leadmain { background: var(--${p}-primary); color: var(--${p}-on-primary); border-radius: ${radiusCard}px; padding: 2rem; margin: 0; }
 .v-tst-leadmain blockquote { font-size: 1.25rem; margin: 0 0 0.8rem; }
 .v-tst-leadmain figcaption { opacity: 0.9; }
 .v-tst-leadside { display: grid; gap: 1rem; }
@@ -1768,7 +1788,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-cov-cols a:hover { color: var(--${p}-primary); }
 .v-cov-pills { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .v-cov-pill { padding: 0.5rem 1rem; border-radius: 999px; background: var(--${p}-surface); border: 1px solid var(--${p}-line); font-size: 0.9rem; font-weight: 600; }
-.v-cov-pill:hover { background: var(--${p}-primary); color: #fff; border-color: var(--${p}-primary); }
+.v-cov-pill:hover { background: var(--${p}-primary); color: var(--${p}-on-primary); border-color: var(--${p}-primary); }
 .v-cov-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; }
 .v-cov-card { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.1rem; background: var(--${p}-surface); border: 1px solid var(--${p}-line); border-radius: 12px; font-weight: 600; }
 .v-cov-card:hover { border-color: var(--${p}-primary); }
@@ -1802,6 +1822,9 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-cov-underline a { padding: 0.5rem 0; color: var(--${p}-ink-soft); border-bottom: 1px solid transparent; }
 .v-cov-underline a:hover { color: var(--${p}-primary); border-bottom-color: var(--${p}-primary); }
 
+/* Ledger feel: industrial field-notes language. Other feels skip this overlay
+   so generated sites do not all share one recognizable template. */
+body[data-feel="ledger"] {
 /* Premium treatment for the large section families.
    The style index now changes the shape language as well as the grid arrangement. */
 .v-sec-services .${p}-media-card { border-radius: 22px 22px 64px 22px; box-shadow: none; }
@@ -1859,6 +1882,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-faq-0 .${p}-card { min-height: 230px; border-radius: 22px 22px 58px 22px; border-top: 5px solid var(--${p}-primary); }
 .v-faq-4 .v-faq-numbered li { min-height: 140px; align-items: center; border-bottom: 1px solid var(--${p}-ink); }
 .v-faq-8 .v-faq-ccard { min-height: 210px; border-radius: 0; border-top: 4px solid var(--${p}-accent); }
+}
 
 /* Compact composition pieces (20) */
 .v-micro { padding-block: clamp(1.35rem, 3vw, 2.4rem); }
@@ -1933,6 +1957,8 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-micro-quick a { font-weight: 700; color: var(--${p}-ink-soft); }
 .v-micro-quick a:hover, .v-micro-quick a:last-child { color: var(--${p}-primary); }
 
+/* Ledger-only micro art direction */
+body[data-feel="ledger"] {
 /* Premium micro art direction
    These are intentionally not one shared set of rounded cards. Each piece borrows a
    different composition language from the reference builds: field documentation,
@@ -2070,6 +2096,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .v-micro-quick-links .v-micro-quick > strong { background: var(--${p}-dark); color: #fff; font-family: ${mono}; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .v-micro-quick-links .v-micro-quick a { color: var(--${p}-ink); }
 .v-micro-quick-links .v-micro-quick a:hover { background: var(--${p}-accent); color: var(--${p}-ink); }
+}
 
 @media (max-width: 1020px) {
   .v-section-head { grid-template-columns: 1fr; gap: 0.8rem; }
@@ -2101,7 +2128,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-micro-license-strip .v-micro-badges span:nth-child(-n+2) { border-bottom: 1px solid var(--${p}-ink); }
   .v-micro-response-window .v-micro-window { grid-template-columns: 1fr 1fr; }
   .v-micro-response-window .v-micro-window .${p}-call { grid-column: 1 / -1; min-height: 58px; }
-  .v-micro-photo-proof .v-micro-photo > div { margin-left: -1.5rem; }
+  body[data-feel="ledger"] .v-micro-photo-proof .v-micro-photo > div { margin-left: 0; }
   .v-micro-local-note .v-micro-local { grid-template-columns: 55px 1fr; }
   .v-micro-local-note .v-micro-citylinks { grid-column: 1 / -1; border-top: 1px solid var(--${p}-ink); }
   .v-micro-quick-links .v-micro-quick { grid-template-columns: repeat(3, 1fr); }
@@ -2160,8 +2187,8 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
   .v-micro-response-window .v-micro-window .${p}-call { grid-column: auto; }
   .v-micro-team-note .v-micro-note { grid-template-columns: auto 1fr; padding: 1.5rem; }
   .v-micro-team-note .v-micro-note blockquote { grid-column: 1 / -1; }
-  .v-micro-photo-proof .v-micro-photo { padding: 0 0.8rem 0.8rem 0; }
-  .v-micro-photo-proof .v-micro-photo > div { margin: -2rem 1rem 0; }
+  .v-micro-photo-proof .v-micro-photo { padding: 0; }
+  .v-micro-photo-proof .v-micro-photo > div { margin: 0; }
   .v-micro-photo-proof .v-micro-photo img { min-height: 260px; }
   .v-micro-booking-steps .v-micro-steps li { min-height: 130px; }
   .v-micro-local-note .v-micro-local { grid-template-columns: 46px 1fr; }
@@ -2203,7 +2230,7 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .${p}-section-dark .v-feat-bcell h3,
 .${p}-section-dark .v-acc-item summary h3,
 .${p}-section-dark .v-faq-ccard h3,
-.${p}-section-dark .p-card h3,
+.${p}-section-dark .${p}-card h3,
 .${p}-section-dark .v-svc-listitem,
 .${p}-section-dark .v-cov-card,
 .${p}-section-dark .v-cov-bigtile,
@@ -2264,5 +2291,47 @@ export function variantCss(p: string, radiusCard: number, display = "var(--font-
 .${p}-section-dark .v-svc-bignum-n,
 .${p}-section-dark .v-feat-n,
 .${p}-section-dark .v-cov-n { opacity: 0.92; }
+
+/* Interior page section dialects */
+.v-intro-stack { padding-top: 3.4rem; }
+.v-intro-stack .v-intro-copy { max-width: 46rem; }
+.v-intro-editorial { padding-top: 4rem; padding-bottom: 3.2rem; }
+.v-intro-editorial .v-intro-display { max-width: 18ch; font-size: clamp(2.4rem, 5vw, 4.6rem); line-height: 0.96; letter-spacing: -0.045em; }
+.v-intro-editorial .v-intro-lede { max-width: 42rem; font-size: 1.12rem; }
+.v-prose-columns { max-width: none; display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem 2.4rem; }
+.v-prose-rule { padding-top: 2.2rem; border-top: 1px solid var(--${p}-line-strong); }
+.v-facts-strip { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+.v-facts-strip .${p}-fact { flex: 1 1 180px; }
+@media (max-width: 720px) {
+  .v-prose-columns { grid-template-columns: 1fr; }
+}
+
+/* Quiet — gallery-grade spacing, no industrial stamps */
+body[data-feel="quiet"] .v-section-head { border-bottom: 0; padding-bottom: 0; margin-bottom: 2rem; }
+body[data-feel="quiet"] .v-section-head h2 { font-size: clamp(1.9rem, 3.4vw, 3rem); letter-spacing: -0.035em; }
+body[data-feel="quiet"] .${p}-media-card,
+body[data-feel="quiet"] .${p}-card,
+body[data-feel="quiet"] .v-svc-textcard { border-radius: 22px; box-shadow: var(--${p}-shadow); }
+body[data-feel="quiet"] .v-micro { padding-block: clamp(2rem, 4vw, 3.4rem); }
+body[data-feel="quiet"] .v-micro-availability-bar { background: var(--${p}-surface); border-block: 1px solid var(--${p}-line); }
+body[data-feel="quiet"] .v-micro-availability-bar .${p}-call { border-radius: 999px; }
+
+/* Atelier — editorial type, asymmetric heads */
+body[data-feel="atelier"] .v-section-head { grid-template-columns: 1fr; border-bottom: 0; align-items: start; }
+body[data-feel="atelier"] .v-section-head h2 { max-width: 16ch; font-size: clamp(2.3rem, 5vw, 4.2rem); line-height: 0.94; }
+body[data-feel="atelier"] .v-section-head .v-sec-blurb { grid-column: 1; max-width: 38rem; font-size: 1.08rem; }
+body[data-feel="atelier"] .v-quote, body[data-feel="atelier"] .v-tst-big { max-width: 48rem; }
+body[data-feel="atelier"] .v-micro-team-note .v-micro-note { background: transparent; color: inherit; border-top: 0; border-left: 3px solid var(--${p}-accent); padding: 0.4rem 0 0.4rem 1.6rem; min-height: 0; }
+body[data-feel="atelier"] .v-micro-team-note .v-micro-note blockquote { color: var(--${p}-ink); }
+body[data-feel="atelier"] .v-micro-team-note .v-micro-note > strong { color: var(--${p}-primary); }
+body[data-feel="atelier"] .v-micro-team-note .v-micro-note::after { display: none; }
+
+/* Gallery — image-forward, no greyscale, contained media */
+body[data-feel="gallery"] img { filter: none; }
+body[data-feel="gallery"] .${p}-media-card-thumb { aspect-ratio: 4 / 3; }
+body[data-feel="gallery"] .v-svc-mtile, body[data-feel="gallery"] .v-svc-ocard { border-radius: 18px; }
+body[data-feel="gallery"] .v-micro-photo { gap: 1.6rem; }
+body[data-feel="gallery"] .v-micro-photo img { max-height: 360px; border-radius: 20px; }
+body[data-feel="gallery"] .v-hero-panel { min-height: 420px; }
 `;
 }

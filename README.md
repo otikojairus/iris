@@ -6,9 +6,9 @@ structure of sites like `pitcleaningpros.com` (service pillars, city pages, emer
 near-me pages, JSON-LD schema, sitemap) but ships with its own niche, copy, palette, and
 layout every time — assembled from a library of prebuilt themes and section blocks.
 
-The entire backend is embedded in the image (Next.js route handlers). GPT is optional and
-supplied at runtime via environment variables; with no key, Iris runs entirely on the
-deterministic prebuilt-component engine.
+The entire backend is embedded in the image (Next.js route handlers). Claude (Anthropic)
+or GPT is optional and supplied at runtime via environment variables; with no key, Iris
+runs entirely on the deterministic prebuilt-component engine.
 
 ## What it does
 
@@ -18,8 +18,8 @@ deterministic prebuilt-component engine.
 3. The project is **persisted** to a data volume (`/data`) as JSON + a full Next.js
    source tree.
 4. The generated site is **hosted live** in the same container at `/sites/<id>`.
-5. The workspace **chat** applies design edits (theme, accent, layout, tagline) — via GPT
-   when configured, else keyword heuristics.
+5. The workspace **chat** applies design and copy edits (theme, accent, layout, section
+   wording) — via Claude or GPT when configured, else keyword heuristics.
 6. **Export** the generated Next.js source as a `.zip` any time.
 
 ## Screens & routes
@@ -41,9 +41,12 @@ deterministic prebuilt-component engine.
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | *(empty)* | Enables GPT-driven chat edits. Empty = deterministic engine only. |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Chat model. |
+| `ANTHROPIC_API_KEY` | *(empty)* | Enables Claude-driven generation and chat edits (preferred). |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Claude model. |
+| `OPENAI_API_KEY` | *(empty)* | Enables GPT if Anthropic is unset, or when `IRIS_AI_PROVIDER=openai`. |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI chat model. |
 | `OPENAI_BASE_URL` | *(empty)* | Optional OpenAI-compatible endpoint. |
+| `IRIS_AI_PROVIDER` | *(auto)* | Force `anthropic` or `openai` when both keys are set. |
 | `IRIS_DATA_DIR` | `/data` (container) | Where projects + generated sites are stored. |
 
 Copy `.env.example` to `.env` and fill in values.
@@ -51,7 +54,7 @@ Copy `.env.example` to `.env` and fill in values.
 ## Run with Docker (appliance)
 
 ```bash
-cp .env.example .env        # add OPENAI_API_KEY if you want AI edits
+cp .env.example .env        # add ANTHROPIC_API_KEY if you want Claude edits
 docker compose up --build   # http://localhost:3000
 ```
 
@@ -69,4 +72,4 @@ npm run lint
 ## Stack
 
 Next.js 16 (App Router, standalone output, embedded route-handler backend) · React 19 ·
-TypeScript · Tailwind CSS 4 · OpenAI SDK (optional) · JSZip.
+TypeScript · Tailwind CSS 4 · Anthropic + OpenAI SDKs (optional) · JSZip.

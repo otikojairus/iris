@@ -6,7 +6,7 @@
 import type { Project } from "@/lib/types";
 import { THEMES } from "@/lib/generate/themes";
 import { HERO_VARIANTS, HEADER_VARIANTS, FOOTER_VARIANTS } from "@/lib/generate/variants";
-import { getAiClient, AI_CONFIG, isAiEnabled } from "./client";
+import { completeJson, isAiEnabled } from "./client";
 import type { ContentEditSpec } from "./content";
 
 /**
@@ -255,8 +255,8 @@ DESIGN fields:
 - accentColor: a hex color string like "#e11d2a"
 - tagline: a short marketing tagline (max ~90 chars)
 - brandName, phoneDisplay: only if the user explicitly asks to change them
-- shuffleLayout: true if the user wants a different section arrangement/layout
-- newHero / newHeader / newFooter: true if the user wants a different hero / header (navbar) / footer LAYOUT
+- shuffleLayout: true ONLY if the user explicitly wants to shuffle/rearrange sections
+- newHero / newHeader / newFooter: true ONLY if they explicitly want a different prebuilt LAYOUT variant (e.g. "try a different header layout"). Do NOT set these for logo, CSS, spacing, or "redesign / restyle / customize this section" — those are code edits handled elsewhere.
 
 CONTENT edits (changing the WORDS on pages) — set "contentEdit" when the user asks to rewrite/reword/shorten/expand copy, change the intro/headline/FAQs/sections, change tone/voice, add an FAQ, etc.:
 - contentEdit.scope: "global" (all content pages) or "page" (a specific page)
@@ -349,37 +349,25 @@ function coerceAiPatch(project: Project, json: AiEditJson, instruction: string, 
   return patch;
 }
 
-/** Interpret a chat instruction into a project patch. Uses GPT when configured. */
+/** Interpret a chat instruction into a project patch. Uses Claude or GPT when a key is set. */
 export async function interpretEdit(project: Project, instruction: string, context: EditContext = {}): Promise<EditResult> {
   if (!isAiEnabled()) return heuristicEdit(project, instruction, context);
 
-  const ai = getAiClient();
-  if (!ai) return heuristicEdit(project, instruction, context);
-
   try {
-    const completion = await ai.chat.completions.create({
-      model: AI_CONFIG.model,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: [
-            `Current design: theme=${project.themeId}, accent=${project.branding.accentColor}, tagline="${project.branding.tagline}".`,
-            context.currentSlug
-              ? `Open in the preview: ${context.currentLabel || context.currentSlug} (${context.currentSlug}) — this is what the user can see right now.`
-              : `Open in the preview: nothing specific.`,
-            `User request: "${instruction}"`,
-            `Return a JSON object with any of: themeId, accentColor, tagline, brandName, phoneDisplay, shuffleLayout, newHero, newHeader, newFooter, contentEdit, reply.`,
-          ].join("\n"),
-        },
-      ],
+    const json = await completeJson<AiEditJson>({
+      system: SYSTEM_PROMPT,
+      user: [
+        `Current design: theme=${project.themeId}, accent=${project.branding.accentColor}, tagline="${project.branding.tagline}".`,
+        context.currentSlug
+          ? `Open in the preview: ${context.currentLabel || context.currentSlug} (${context.currentSlug}) — this is what the user can see right now.`
+          : `Open in the preview: nothing specific.`,
+        `User request: "${instruction}"`,
+        `Return a JSON object with any of: themeId, accentColor, tagline, brandName, phoneDisplay, shuffleLayout, newHero, newHeader, newFooter, contentEdit, reply.`,
+      ].join("\n"),
+      temperature: 0.3,
     });
-    const raw = completion.choices[0]?.message?.content || "{}";
-    const json = JSON.parse(raw) as AiEditJson;
     const patch = coerceAiPatch(project, json, instruction, context);
     const reply = (json.reply && String(json.reply).trim()) || "Done — I applied that change to the staged site.";
-    // If the model returned nothing actionable, fall back so the user still gets a real change when possible.
     if (Object.keys(patch).length === 0) {
       const fallback = heuristicEdit(project, instruction, context);
       if (Object.keys(fallback.patch).length) return fallback;

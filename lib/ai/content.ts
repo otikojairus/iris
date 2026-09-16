@@ -4,9 +4,10 @@
 // each page it produces a typed PageContent (unique H1, 80+ word intro, body sections,
 // 3+ FAQs, 2+ city facts) that both the live host and the exported app render.
 //
-// When OPENAI_API_KEY is set, copy is written by GPT under strict SEO rules. Otherwise
-// it falls back to the deterministic template engine so pages always render. A dedup
-// guard rejects near-duplicate intros/H1s to satisfy the "no boilerplate" requirement.
+// When ANTHROPIC_API_KEY or OPENAI_API_KEY is set, copy is written by the model under
+// strict SEO rules. Otherwise it falls back to the deterministic template engine so pages
+// always render. A dedup guard rejects near-duplicate intros/H1s to satisfy the
+// "no boilerplate" requirement.
 
 import type { CityFact, ContentSection, FaqItem, PageContent, SeoPage } from "@/lib/types";
 import type { SiteStructure } from "@/lib/generate/content";
@@ -23,7 +24,7 @@ import {
   richSections,
   serviceShortLabel,
 } from "@/lib/generate/content";
-import { getAiClient, AI_CONFIG } from "./client";
+import { completeJson, isAiEnabled } from "./client";
 import { NO_PSEO_RULE, businessBrief } from "./brief";
 import type { Branding } from "@/lib/generate/generator";
 
@@ -77,11 +78,11 @@ export function templateContent(page: SeoPage, structure: SiteStructure, b: Bran
 /* ------------------------------ content edits ------------------------------ */
 
 /**
- * A structured, chat-driven content-edit request. Produced by the editor (GPT or
+ * A structured, chat-driven content-edit request. Produced by the editor (Claude/GPT or
  * heuristics) and applied by regenerating the affected PageContent.
  *
  * `fields` narrows the edit to specific parts of a page; when empty the whole page
- * is regenerated. `tone`/`guidance` steer both the GPT rewrite and the deterministic
+ * is regenerated. `tone`/`guidance` steer both the AI rewrite and the deterministic
  * fallback. `faqTopic` supports "add/change an FAQ about X".
  */
 export type ContentEditSpec = {
@@ -263,8 +264,8 @@ export function templateContentEdit(
 }
 
 /**
- * Regenerate a single page's content honoring a chat-driven edit spec. Uses GPT (with
- * the tone/guidance folded into the prompt) when a key is configured; otherwise applies
+ * Regenerate a single page's content honoring a chat-driven edit spec. Uses Claude or GPT
+ * (with the tone/guidance folded into the prompt) when a key is configured; otherwise applies
  * the deterministic template edit. Always returns SEO-valid content.
  */
 export async function editPageContent(
@@ -275,8 +276,7 @@ export async function editPageContent(
   previous?: PageContent,
   description?: string,
 ): Promise<PageContent> {
-  const client = getAiClient();
-  if (!client) return templateContentEdit(page, structure, b, spec, previous);
+  if (!isAiEnabled()) return templateContentEdit(page, structure, b, spec, previous);
 
   const directives: string[] = [];
   if (spec.tone) directives.push(TONE_GUIDANCE[spec.tone]);
@@ -313,17 +313,11 @@ export async function editPageContent(
     .join("\n");
 
   try {
-    const completion = await client.chat.completions.create({
-      model: AI_CONFIG.model,
+    const json = await completeJson<AiContentJson>({
+      system: SYSTEM_PROMPT,
+      user: userPrompt,
       temperature: 0.8,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
     });
-    const raw = completion.choices[0]?.message?.content || "{}";
-    const json = JSON.parse(raw) as AiContentJson;
 
     const intro = String(json.intro || "").trim();
     const sections = coerceSections(json.sections);
@@ -436,9 +430,8 @@ export async function aiPageContent(
   b: Branding,
   description?: string,
 ): Promise<PageContent> {
-  const client = getAiClient();
   const fallback = templateContent(page, structure, b);
-  if (!client) return fallback;
+  if (!isAiEnabled()) return fallback;
 
   const facts = page.pageType === "City Service Page" ? localFacts(page) : [];
   const location = pageLocation(page);
@@ -461,17 +454,11 @@ export async function aiPageContent(
     .join("\n");
 
   try {
-    const completion = await client.chat.completions.create({
-      model: AI_CONFIG.model,
+    const json = await completeJson<AiContentJson>({
+      system: SYSTEM_PROMPT,
+      user: userPrompt,
       temperature: 0.8,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
     });
-    const raw = completion.choices[0]?.message?.content || "{}";
-    const json = JSON.parse(raw) as AiContentJson;
 
     const intro = String(json.intro || "").trim();
     const sections = coerceSections(json.sections);

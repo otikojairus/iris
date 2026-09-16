@@ -25,6 +25,7 @@ import {
   esc,
   imageFor,
   planInterior,
+  planInteriorFlow,
   planVariants,
   renderFooter,
   renderHeader,
@@ -138,12 +139,14 @@ function document(
     body: string;
     footer: string;
     jsonLd: unknown[];
+    feel?: string;
   },
 ): string {
   const { theme, b } = shell;
   const css = renderCss(theme, { inline: true });
   const logo = logoDataUri(theme, b.brandName);
   const canonical = absUrl(b.domain, opts.canonicalSlug);
+  const feel = opts.feel || "quiet";
 
   return `<!doctype html>
 <html lang="en-CA">
@@ -164,7 +167,7 @@ function document(
 ${opts.jsonLd.map(jsonLdTag).join("\n")}
 <style>${css}</style>
 </head>
-<body>
+<body data-feel="${feel}">
 ${opts.header}
 <main class="${theme.prefix}-main">
 ${opts.body}
@@ -382,6 +385,7 @@ export function renderHostHome(project: Project): string {
     header,
     body: heroHtml + sectionsHtml,
     footer,
+    feel: plan.feel,
     jsonLd: [
       {
         "@context": "https://schema.org",
@@ -425,15 +429,15 @@ export function renderHostServices(project: Project): string {
     )
     .join("");
 
-  const servicesGrid = renderSection(ctx, "services-grid", { eyebrow: "// ALL SERVICES", heading: `Services from ${b.brandName}` });
-  const coverage = structure.uniqueCities.length ? renderSection(ctx, "coverage-tiles", { eyebrow: "// FIND YOUR CITY", heading: "Local Coverage", band: "soft" }) : "";
+  const servicesGrid = renderSection(ctx, "services", { eyebrow: "Services", heading: `Services from ${b.brandName}`, styleSeed: `${project.id}:services-index` });
+  const coverage = structure.uniqueCities.length ? renderSection(ctx, "coverage", { eyebrow: "Coverage", heading: "Local Coverage", band: "soft", styleSeed: `${project.id}:coverage-index` }) : "";
 
   const body = `<section class="${p}-hero v-hero v-hero-12" data-hero="compact"><div class="${p}-wrap v-hero-compact"><h1>All Services &amp; Locations</h1><a class="${p}-call" href="tel:${esc(
     b.phoneE164,
   )}">Call ${esc(b.phoneDisplay)}</a></div></section>
   ${servicesGrid}
   ${coverage}
-  <section class="${p}-section"><div class="${p}-wrap"><p class="${p}-eyebrow">// FULL INDEX</p><h2>Every Page</h2>${indexHtml}</div></section>`;
+  <section class="${p}-section"><div class="${p}-wrap"><p class="${p}-eyebrow">Index</p><h2>Every Page</h2>${indexHtml}</div></section>`;
 
   return document(shell, {
     title: `Services & Locations | ${b.brandName}`.slice(0, 65),
@@ -442,6 +446,7 @@ export function renderHostServices(project: Project): string {
     header,
     body,
     footer,
+    feel: plan.feel,
     jsonLd: [
       {
         "@context": "https://schema.org",
@@ -499,6 +504,7 @@ export function renderHostPage(project: Project, page: SeoPage): string {
   const content = contentFor(shell, page);
   const plan = planVariants(`${project.id}:${project.themeId}:${project.layoutSeed || 0}`, project.variants);
   const interior = planInterior(`${project.id}:${page.pageSlug}:${project.layoutSeed || 0}`);
+  const flow = planInteriorFlow(`${project.id}:${page.pageSlug}:${project.layoutSeed || 0}`);
 
   const logo = logoDataUri(shell.theme, b.brandName);
   const header = renderHeader(ctx, plan.header, { logo, nav: navLinks(shell) });
@@ -537,26 +543,43 @@ export function renderHostPage(project: Project, page: SeoPage): string {
     : page.pageType === "Emergency Landing"
       ? "When You Need Us Fast"
       : "The Short Version";
-  const introSection = `<section class="${p}-section"><div class="${p}-wrap ${p}-split"><div><p class="${p}-eyebrow">// OVERVIEW</p><h2>${esc(
-    introHeading,
-  )}</h2></div><p>${esc(content.intro)}</p></div></section>`;
+  const introEyebrow = flow.eyebrow === "none" ? "" : `<p class="${p}-eyebrow">${flow.eyebrow === "index" ? "01" : "Overview"}</p>`;
+  const introSection =
+    flow.intro === "editorial"
+      ? `<section class="${p}-section ${p}-section-soft v-intro v-intro-editorial"><div class="${p}-wrap">${introEyebrow}<h2 class="v-intro-display">${esc(
+          introHeading,
+        )}</h2><p class="v-intro-lede">${esc(content.intro)}</p></div></section>`
+      : flow.intro === "stack"
+        ? `<section class="${p}-section v-intro v-intro-stack"><div class="${p}-wrap v-intro-copy">${introEyebrow}<h2>${esc(
+            introHeading,
+          )}</h2><p>${esc(content.intro)}</p></div></section>`
+        : `<section class="${p}-section v-intro v-intro-split"><div class="${p}-wrap ${p}-split"><div>${introEyebrow}<h2>${esc(
+            introHeading,
+          )}</h2></div><p>${esc(content.intro)}</p></div></section>`;
 
   const bodyHtml = content.sections
     .map((section, i) => {
       const band = i % 2 === 0 ? "soft" : undefined;
+      const label = flow.eyebrow === "none" ? undefined : flow.eyebrow === "index" ? String(i + 2).padStart(2, "0") : varyCopy(`${page.pageSlug}:${i}`, ["Details", "How it works", "On site", "What to expect"]);
       if (looksLikeSteps(section)) {
-        return renderSection(ctx, "process-steps", { eyebrow: "// HOW IT WORKS", heading: section.heading, section, band });
+        return renderSection(ctx, "process-steps", { eyebrow: label, heading: section.heading, section, band });
       }
-      return renderSection(ctx, "prose", { eyebrow: "// DETAILS", heading: section.heading, section, band });
+      return renderSection(ctx, "prose", {
+        eyebrow: label,
+        heading: section.heading,
+        section,
+        band,
+        layout: flow.prose === "columns" ? "columns" : flow.prose === "rule" ? "rule" : undefined,
+      });
     })
     .join("\n");
 
   // City facts (2+).
-  const factsHtml = renderCityFacts(shell, page, content.cityFacts);
+  const factsHtml = renderCityFacts(shell, page, content.cityFacts, flow.facts);
 
   // FAQ (variant).
   const faqHtml = renderSection(ctx, interior.faq, {
-    eyebrow: "// COMMON QUESTIONS",
+    eyebrow: flow.eyebrow === "none" ? undefined : "Questions",
     heading: varyCopy(`${page.pageSlug}:faq`, ["A few things people ask", "Questions we hear a lot", "Good to know", "Before you call"]),
     faqs: content.faqs,
     band: "soft",
@@ -571,7 +594,7 @@ export function renderHostPage(project: Project, page: SeoPage): string {
         ? "Related Local Services"
         : "Related Services & Areas";
   const linksHtml = renderSection(ctx, "related-links", {
-    eyebrow: "// KEEP EXPLORING",
+    eyebrow: flow.eyebrow === "none" ? undefined : "Explore",
     heading: linkHeading,
     links: relatedLinksFor(shell, page),
   });
@@ -594,16 +617,18 @@ export function renderHostPage(project: Project, page: SeoPage): string {
     header,
     body,
     footer,
+    feel: plan.feel,
     jsonLd,
   });
 }
 
-function renderCityFacts(shell: Shell, page: SeoPage, facts: CityFact[]): string {
+function renderCityFacts(shell: Shell, page: SeoPage, facts: CityFact[], layout: "grid" | "strip" = "grid"): string {
   if (!isCityPage(page) || facts.length < 1) return "";
   const p = shell.theme.prefix;
-  return `<section class="${p}-section"><div class="${p}-wrap"><p class="${p}-eyebrow">// LOCAL DETAILS</p><h2>What Makes ${esc(
+  const grid = layout === "strip" ? "v-facts-strip" : `${p}-grid ${p}-grid-4`;
+  return `<section class="${p}-section"><div class="${p}-wrap"><p class="${p}-eyebrow">Local details</p><h2>What Makes ${esc(
     cityFromTargetArea(page.targetArea),
-  )} Different</h2><div class="${p}-grid ${p}-grid-4">${facts
+  )} Different</h2><div class="${grid}">${facts
     .map((f) => `<div class="${p}-fact"><span>${esc(f.label)}</span><p>${esc(f.value)}</p></div>`)
     .join("")}</div></div></section>`;
 }
