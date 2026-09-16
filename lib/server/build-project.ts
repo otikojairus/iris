@@ -8,6 +8,7 @@ import { generateSite } from "@/lib/generate/generator";
 import { deriveStructure } from "@/lib/generate/content";
 import { templateTagline } from "@/lib/ai/home-content";
 import type { Project } from "@/lib/types";
+import { withTrackKey } from "@/lib/server/track-key";
 
 export type CreateInput = {
   prompt: string;
@@ -95,5 +96,5 @@ export function buildProjectFromUpload(input: CreateInput): BuildResult {
     previewUrl: `/sites/${id}`,
   };
 
-  return { project };
+  return { project: withTrackKey(project) };
 }

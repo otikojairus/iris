@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconGrid, IconLayers, IconPlus, IconSettings, IconSparkle } from "./icons";
+import { IconChart, IconGrid, IconLayers, IconPlus, IconSettings, IconSparkle } from "./icons";
 import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/" },
+  { href: "/analytics", label: "Analytics", icon: IconChart, match: (p: string) => p.startsWith("/analytics") },
   { href: "/new", label: "New Project", icon: IconPlus, match: (p: string) => p.startsWith("/new") },
 ];
 

@@ -1192,6 +1192,55 @@ a {
   background: #ffffff;
 }
 
+.iris-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+  width: 84px;
+}
+.iris-spark span {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent, #7c5cff);
+}
+.iris-daybars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+}
+.iris-daybar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+}
+.iris-daybar-col {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.iris-daybar-col span {
+  display: block;
+  width: 100%;
+  background: var(--accent, #7c5cff);
+  border-radius: 4px 4px 0 0;
+  min-height: 3px;
+}
+.iris-daybar small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
 @media (max-width: 900px) {
   .iris-themes {
     grid-template-columns: repeat(2, 1fr);

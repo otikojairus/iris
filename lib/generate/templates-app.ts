@@ -429,8 +429,7 @@ export default function HomePage() {
 `;
 }
 
-export function renderLayout(theme: Theme, b: Branding): string {
-  const p = theme.prefix;
+export function renderLayout(theme: Theme, b: Branding, track = false): string {
   const d = fontJsName(theme.display);
   const body = fontJsName(theme.body);
   const mono = theme.mono ? fontJsName(theme.mono) : null;
@@ -438,7 +437,7 @@ export function renderLayout(theme: Theme, b: Branding): string {
 ${fontImports(theme)}
 import { SiteFooter } from "@/components/site-footer";
 import { SiteNavbar } from "@/components/site-navbar";
-import { SITE_NAME, absoluteUrl, getSiteUrl } from "@/lib/site-data";
+${track ? `import { IrisTrack } from "@/components/iris-track";\n` : ""}import { SITE_NAME, absoluteUrl, getSiteUrl } from "@/lib/site-data";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -466,6 +465,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <SiteNavbar />
         {children}
         <SiteFooter />
+        ${track ? "<IrisTrack />" : ""}
       </body>
     </html>
   );

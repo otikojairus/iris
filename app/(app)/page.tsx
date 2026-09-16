@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { StatusBadge } from "@/components/status-badge";
@@ -11,6 +12,16 @@ export default function DashboardPage() {
   const { projects } = useStore();
   const totalPages = projects.reduce((sum, p) => sum + p.pageCount, 0);
   const ready = projects.filter((p) => p.status === "ready").length;
+  const [ctaClicks, setCtaClicks] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/analytics", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { totals?: { ctaClicks?: number } } | null) => {
+        if (data?.totals?.ctaClicks != null) setCtaClicks(data.totals.ctaClicks);
+      })
+      .catch(() => undefined);
+  }, []);
 
   return (
     <>
@@ -45,8 +56,12 @@ export default function DashboardPage() {
             <div className="iris-stat-label">Pages generated</div>
           </div>
           <div className="iris-stat">
-            <div className="iris-stat-value">Docker</div>
-            <div className="iris-stat-label">One-command deploy</div>
+            <div className="iris-stat-value">{ctaClicks == null ? "—" : ctaClicks.toLocaleString()}</div>
+            <div className="iris-stat-label">
+              <Link href="/analytics" style={{ color: "inherit", textDecoration: "none" }}>
+                Call CTA clicks
+              </Link>
+            </div>
           </div>
         </div>
 

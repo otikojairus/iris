@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { IconDownload } from "@/components/icons";
 import { ActionButton } from "@/components/action-button";
 import { useToast } from "@/components/toast";
@@ -89,6 +90,14 @@ export function SettingsForm({ project }: { project: Project }) {
         <Row label="Standalone Docker output" desc="Emit a self-contained server for the Dockerfile." on={standalone} set={setStandalone} />
         <Row label="Generate sitemap.xml" desc="Auto-build a sitemap from every generated page." on={sitemap} set={setSitemap} />
         <Row label="Generate robots.txt" desc="Include crawl directives and sitemap reference." on={robots} set={setRobots} />
+      </section>
+
+      <section className="iris-card">
+        <h2 className="iris-h2" style={{ marginBottom: 6 }}>Call click tracking</h2>
+        <p className="iris-sub" style={{ marginTop: 0, marginBottom: 12 }}>
+          Every export includes a beacon that reports Call CTA clicks to this Iris app from whatever server the site is deployed on. Set <code className="iris-mono">IRIS_PUBLIC_URL</code> to the public Iris URL, then re-export.
+        </p>
+        <Link href="/analytics" className="iris-btn iris-btn-sm">View analytics</Link>
       </section>
 
       <section className="iris-card">

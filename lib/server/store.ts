@@ -10,7 +10,9 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { Project } from "@/lib/types";
 import { generateSite } from "@/lib/generate/generator";
+import { irisPublicUrl } from "@/lib/track-origin";
 import { DATA_DIR } from "./data-dir";
+import { withTrackKey } from "./track-key";
 
 const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 
@@ -34,11 +36,12 @@ async function pathExists(p: string): Promise<boolean> {
 
 /** Persist the project JSON and (re)write its generated site source tree to disk. */
 export async function saveProject(project: Project): Promise<Project> {
-  const dir = projectDir(project.id);
+  const next = withTrackKey(project);
+  const dir = projectDir(next.id);
   await ensureDir(dir);
-  await fs.writeFile(path.join(dir, "project.json"), JSON.stringify(project, null, 2), "utf8");
-  await writeSiteFiles(project);
-  return project;
+  await fs.writeFile(path.join(dir, "project.json"), JSON.stringify(next, null, 2), "utf8");
+  await writeSiteFiles(next);
+  return next;
 }
 
 /** Regenerate and write the exported Next.js source tree for a project. */
@@ -46,7 +49,9 @@ export async function writeSiteFiles(project: Project): Promise<void> {
   const dir = path.join(projectDir(project.id), "site");
   await ensureDir(dir);
   try {
-    const site = generateSite(project, project.themeId || "slate", project.layoutSeed || 0);
+    const site = generateSite(project, project.themeId || "slate", project.layoutSeed || 0, {
+      trackOrigin: irisPublicUrl(),
+    });
     await Promise.all(
       Object.entries(site.files).map(async ([rel, content]) => {
         const full = path.join(dir, rel);
@@ -102,6 +107,8 @@ export async function deleteProject(id: string): Promise<boolean> {
 }
 
 /** Regenerate the in-memory file map for export (does not touch disk). */
-export function buildSiteFiles(project: Project): Record<string, string> {
-  return generateSite(project, project.themeId || "slate", project.layoutSeed || 0).files;
+export function buildSiteFiles(project: Project, opts?: { trackOrigin?: string }): Record<string, string> {
+  return generateSite(project, project.themeId || "slate", project.layoutSeed || 0, {
+    trackOrigin: opts?.trackOrigin || irisPublicUrl(),
+  }).files;
 }

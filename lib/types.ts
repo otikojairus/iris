@@ -182,4 +182,9 @@ export type Project = {
   messages: ChatMessage[];
   files: ProjectFile[];
   previewUrl?: string;
+  /**
+   * Write-only key baked into exported sites. Deployed copies POST CTA clicks to
+   * this Iris appliance at /api/t using this key — no session cookie required.
+   */
+  trackKey?: string;
 };

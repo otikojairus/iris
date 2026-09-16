@@ -20,6 +20,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      IRIS_PUBLIC_URL: ${IRIS_PUBLIC_URL:-}
     # Optional: load the same vars from a local .env file (see .env.example).
     env_file:
       - path: .env

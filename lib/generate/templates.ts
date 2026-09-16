@@ -182,7 +182,7 @@ yarn-error.log*
 `;
 }
 
-export function renderReadme(b: Branding, pageCount: number): string {
+export function renderReadme(b: Branding, pageCount: number, trackOrigin = ""): string {
   return `# ${b.brandName} — pSEO site
 
 Programmatic SEO site for **${b.tagline}** built with Iris.
@@ -208,6 +208,11 @@ docker compose up --build
 \`\`\`
 
 Serves on port 3000. Set \`NEXT_PUBLIC_SITE_URL\` for the canonical domain.
+
+## Call-button analytics
+
+Call CTAs (\`tel:\` links) report clicks back to the Iris appliance${trackOrigin ? ` at \`${trackOrigin}/api/t\`` : ""}.
+This is a tiny beacon — it does not block the phone dialer. Re-export from Iris if the appliance URL changes.
 `;
 }
 

@@ -20,13 +20,14 @@ runs entirely on the deterministic prebuilt-component engine.
 4. The generated site is **hosted live** in the same container at `/sites/<id>`.
 5. The workspace **chat** applies design and copy edits (theme, accent, layout, section
    wording) — via Claude or GPT when configured, else keyword heuristics.
-6. **Export** the generated Next.js source as a `.zip` any time.
+6. **Export** the generated Next.js source as a `.zip` any time. Exported sites report Call CTA clicks back to this appliance.
 
 ## Screens & routes
 
 | Route | Purpose |
 | --- | --- |
 | `/` | Dashboard — projects grid |
+| `/analytics` | Call CTA click stats from exported / deployed sites |
 | `/new` | Upload plan → generate |
 | `/projects/[id]` | Workspace — chat + live preview |
 | `/projects/[id]/pages` | Generated pages table |
@@ -36,6 +37,8 @@ runs entirely on the deterministic prebuilt-component engine.
 | `GET /api/projects` · `GET/PATCH/DELETE /api/projects/[id]` | CRUD |
 | `POST /api/projects/[id]/chat` | AI/heuristic design edit |
 | `GET /api/projects/[id]/export` | Download site source (.zip) |
+| `POST /api/t` | Public CTA ingest from deployed sites (CORS, write-only key) |
+| `GET /api/analytics` | Authenticated click totals |
 
 ## Configuration (environment variables)
 
@@ -48,6 +51,7 @@ runs entirely on the deterministic prebuilt-component engine.
 | `OPENAI_BASE_URL` | *(empty)* | Optional OpenAI-compatible endpoint. |
 | `IRIS_AI_PROVIDER` | *(auto)* | Force `anthropic` or `openai` when both keys are set. |
 | `IRIS_DATA_DIR` | `/data` (container) | Where projects + generated sites are stored. |
+| `IRIS_PUBLIC_URL` | *(empty)* | Public URL of this Iris app. Baked into exports so remote sites can report Call CTA clicks. |
 
 Copy `.env.example` to `.env` and fill in values.
 

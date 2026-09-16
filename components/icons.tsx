@@ -83,6 +83,10 @@ export const IconDownload = (p: IconProps) => (
   <svg {...base} {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></svg>
 );
 
+export const IconChart = (p: IconProps) => (
+  <svg {...base} {...p}><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 17v-6" /><path d="M12 17V8" /><path d="M16 17v-4" /></svg>
+);
+
 export const IconSearch = (p: IconProps) => (
   <svg {...base} {...p}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
 );

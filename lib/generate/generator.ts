@@ -33,6 +33,8 @@ import {
   renderSitemap,
   renderSlugPage,
 } from "./templates-app";
+import { renderIrisTrack } from "./iris-track";
+import { irisPublicUrl } from "@/lib/track-origin";
 import { buildPreviewHtml } from "./preview";
 
 export type Branding = {
@@ -67,6 +69,7 @@ const FILE_ORDER: Array<{ path: string; kind: "dir" | "file"; language?: string 
   { path: "components/json-ld.tsx", kind: "file", language: "tsx" },
   { path: "components/site-navbar.tsx", kind: "file", language: "tsx" },
   { path: "components/site-footer.tsx", kind: "file", language: "tsx" },
+  { path: "components/iris-track.tsx", kind: "file", language: "tsx" },
   { path: "lib", kind: "dir" },
   { path: "lib/pages.json", kind: "file", language: "json" },
   { path: "lib/generated-pages.ts", kind: "file", language: "ts" },
@@ -89,9 +92,10 @@ const FILE_ORDER: Array<{ path: string; kind: "dir" | "file"; language?: string 
 
 /** Generate the complete site for a project (deterministic for a given themeId + seed). */
 export function generateSite(
-  project: Pick<Project, "id" | "pages" | "branding"> & Partial<Pick<Project, "contentBySlug" | "variants" | "homeContent">>,
+  project: Pick<Project, "id" | "pages" | "branding"> & Partial<Pick<Project, "contentBySlug" | "variants" | "homeContent" | "trackKey">>,
   themeId: string,
   seed = 0,
+  opts?: { trackOrigin?: string },
 ): GeneratedSite {
   const pages = project.pages ?? [];
   const branding: Branding = {
@@ -106,6 +110,8 @@ export function generateSite(
   const structure = deriveStructure(pages);
   const b = branding;
   const composition = compose(`${project.id || "project"}:${themeId}:${seed}`);
+  const trackOrigin = (opts?.trackOrigin || irisPublicUrl()).replace(/\/+$/, "");
+  const trackKey = project.trackKey || "";
 
   const files: Record<string, string> = {
     "package.json": renderPackageJson(b),
@@ -116,7 +122,7 @@ export function generateSite(
     "Dockerfile": renderDockerfile(),
     "docker-compose.yml": renderDockerCompose(b),
     ".gitignore": renderGitignore(),
-    "README.md": renderReadme(b, structure.pageCount),
+    "README.md": renderReadme(b, structure.pageCount, trackOrigin),
     "public/logo.svg": renderLogo(theme, b.brandName),
     "lib/pages.json": renderPagesJson(pages),
     "lib/generated-pages.ts": renderGeneratedPages(),
@@ -132,8 +138,9 @@ export function generateSite(
     "components/json-ld.tsx": renderJsonLd(),
     "components/site-navbar.tsx": renderNavbar(theme, b, structure),
     "components/site-footer.tsx": renderFooter(theme, b, structure),
+    "components/iris-track.tsx": renderIrisTrack(trackOrigin, trackKey),
     "app/globals.css": renderCss(theme),
-    "app/layout.tsx": renderLayout(theme, b),
+    "app/layout.tsx": renderLayout(theme, b, Boolean(trackOrigin && trackKey)),
     "app/page.tsx": renderHomePage(theme, b, structure, composition, project.homeContent),
     "app/services/page.tsx": renderServicesPage(theme, b, structure),
     "app/[slug]/page.tsx": renderSlugPage(theme, b, structure),
